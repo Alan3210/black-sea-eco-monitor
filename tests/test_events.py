@@ -1,13 +1,4 @@
-from fastapi.testclient import TestClient
-
-from backend.main import app
-
-
-client = TestClient(app)
-
-
-
-def test_create_event():
+def test_create_event(client):
 
     response = client.post(
         "/events/",

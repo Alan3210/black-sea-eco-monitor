@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from backend.database.database import SessionLocal
+from backend.database.database import get_db
 from backend.database.models import EventDB
 
 from backend.models.event import EnvironmentalEvent
@@ -15,15 +15,6 @@ router = APIRouter()
 
 
 
-def get_db():
-
-    db = SessionLocal()
-
-    try:
-        yield db
-
-    finally:
-        db.close()
 
 
 
