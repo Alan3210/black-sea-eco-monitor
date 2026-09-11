@@ -1,12 +1,15 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from database.database import SessionLocal
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
-from models.event import EnvironmentalEvent
+from backend.database.database import SessionLocal
+from backend.database.models import EventDB
 
-from services import event_service
+from backend.models.event import EnvironmentalEvent
 
+from backend.services import event_service
 
 router = APIRouter()
 

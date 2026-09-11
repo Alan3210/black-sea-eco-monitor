@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, Float
 
-from database.database import Base
+from backend.database.database import Base
 
 
 class EventDB(Base):

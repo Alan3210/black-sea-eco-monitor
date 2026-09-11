@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 
-from database.models import EventDB
-from models.event import EnvironmentalEvent
+from backend.database.models import EventDB
+from backend.models.event import EnvironmentalEvent
 
 
 

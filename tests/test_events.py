@@ -1,0 +1,47 @@
+from fastapi.testclient import TestClient
+
+from backend.main import app
+
+
+client = TestClient(app)
+
+
+
+def test_create_event():
+
+    response = client.post(
+        "/events/",
+        json={
+            "id": "test_event_001",
+
+            "category": "wildfire",
+
+            "location": {
+                "latitude": 44.56,
+                "longitude": 38.07
+            },
+
+            "timestamp":
+            "2026-09-11T18:00:00Z",
+
+            "severity":
+            "high",
+
+            "confidence":
+            0.85,
+
+            "sources":[
+                "test"
+            ],
+
+            "description":
+            "Test wildfire event"
+        }
+    )
+
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["status"] == "created"
