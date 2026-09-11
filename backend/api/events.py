@@ -1,4 +1,8 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from database.database import SessionLocal
+from database.models import EventDB
 
 from models.event import EnvironmentalEvent
 
@@ -6,35 +10,84 @@ from models.event import EnvironmentalEvent
 router = APIRouter()
 
 
-events = []
+def get_db():
+
+    db = SessionLocal()
+
+    try:
+        yield db
+
+    finally:
+        db.close()
+
 
 
 @router.get("/")
-def get_events():
+def get_events(
+    db: Session = Depends(get_db)
+):
+
+    events = db.query(EventDB).all()
 
     return events
 
 
 
 @router.post("/")
-def create_event(event: EnvironmentalEvent):
+def create_event(
+    event: EnvironmentalEvent,
+    db: Session = Depends(get_db)
+):
 
-    events.append(event)
+    db_event = EventDB(
+
+        id=event.id,
+
+        category=event.category.value,
+
+        latitude=event.location.latitude,
+
+        longitude=event.location.longitude,
+
+        timestamp=event.timestamp,
+
+        severity=event.severity.value,
+
+        confidence=event.confidence,
+
+        description=event.description
+    )
+
+
+    db.add(db_event)
+
+    db.commit()
+
+    db.refresh(db_event)
+
 
     return {
         "status": "created",
-        "event": event
+        "event": db_event
     }
 
 
 
 @router.get("/{event_id}")
-def get_event(event_id: str):
+def get_event(
+    event_id: str,
+    db: Session = Depends(get_db)
+):
 
-    for event in events:
+    event = (
+        db.query(EventDB)
+        .filter(EventDB.id == event_id)
+        .first()
+    )
 
-        if event.id == event_id:
-            return event
+
+    if event:
+        return event
 
 
     return {
