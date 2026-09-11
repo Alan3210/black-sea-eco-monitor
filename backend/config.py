@@ -19,6 +19,15 @@ class Settings:
         "development"
     )
 
+    NEWS_RSS_URL = os.getenv(
+    "NEWS_RSS_URL",
+    ""
+)
+
+    NEWS_SOURCE_NAME = os.getenv(
+        "NEWS_SOURCE_NAME",
+        "Black Sea News Feed"
+    )
 
     DATABASE_URL = os.getenv(
         "DATABASE_URL",
