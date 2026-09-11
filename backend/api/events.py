@@ -2,12 +2,14 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from database.database import SessionLocal
-from database.models import EventDB
 
 from models.event import EnvironmentalEvent
 
+from services import event_service
+
 
 router = APIRouter()
+
 
 
 def get_db():
@@ -27,9 +29,7 @@ def get_events(
     db: Session = Depends(get_db)
 ):
 
-    events = db.query(EventDB).all()
-
-    return events
+    return event_service.get_all_events(db)
 
 
 
@@ -39,36 +39,14 @@ def create_event(
     db: Session = Depends(get_db)
 ):
 
-    db_event = EventDB(
-
-        id=event.id,
-
-        category=event.category.value,
-
-        latitude=event.location.latitude,
-
-        longitude=event.location.longitude,
-
-        timestamp=event.timestamp,
-
-        severity=event.severity.value,
-
-        confidence=event.confidence,
-
-        description=event.description
+    created = event_service.create_event(
+        db,
+        event
     )
-
-
-    db.add(db_event)
-
-    db.commit()
-
-    db.refresh(db_event)
-
 
     return {
         "status": "created",
-        "event": db_event
+        "event": created
     }
 
 
@@ -79,17 +57,7 @@ def get_event(
     db: Session = Depends(get_db)
 ):
 
-    event = (
-        db.query(EventDB)
-        .filter(EventDB.id == event_id)
-        .first()
+    return event_service.get_event_by_id(
+        db,
+        event_id
     )
-
-
-    if event:
-        return event
-
-
-    return {
-        "error": "Event not found"
-    }
