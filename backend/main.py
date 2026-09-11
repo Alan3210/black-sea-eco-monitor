@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 
+from backend.api.evidence import router as evidence_router
+
 from backend.api.events import router as events_router
 
 from backend.database.database import engine, Base
@@ -24,6 +26,10 @@ app.include_router(
     prefix="/events"
 )
 
+app.include_router(
+    evidence_router,
+    prefix="/events"
+)
 
 @app.get("/")
 def root():

@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from enum import Enum
+from backend.models.evidence import Evidence
 
 
 class EventCategory(str, Enum):
@@ -50,5 +51,7 @@ class EnvironmentalEvent(BaseModel):
     )
 
     sources: List[str] = []
+
+    evidences: List[Evidence] = []
 
     description: Optional[str] = None
