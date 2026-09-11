@@ -5,8 +5,10 @@ from api.events import router as events_router
 from database.database import engine, Base
 from database import models
 
+from config import settings
+
 app = FastAPI(
-    title="Black Sea Eco Monitor API",
+    title=settings.PROJECT_NAME,
     version="0.1.0"
 )
 
