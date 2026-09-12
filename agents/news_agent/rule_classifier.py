@@ -7,13 +7,28 @@ from backend.models.event import EventCategory
 from agents.news_agent.models import NewsItem
 
 
-def detect_category(text: str):
+def build_text(
+    item: NewsItem
+) -> str:
 
-    text = text.lower()
+    return (
+        f"{item.title} "
+        f"{item.summary or ''}"
+    ).lower()
 
-    # --------------------------------------------------
-    # Industrial fires
-    # --------------------------------------------------
+
+# =====================================================
+# CATEGORY DETECTION
+# =====================================================
+
+
+def detect_category(
+    text: str
+):
+
+    # -------------------------------
+    # Industrial fire
+    # -------------------------------
 
     fire_terms = [
         "fire",
@@ -26,84 +41,90 @@ def detect_category(text: str):
     industrial_terms = [
         "terminal",
         "refinery",
-        "industrial",
         "factory",
         "plant",
-        "oil depot",
+        "industrial",
         "fuel depot",
-        "tank farm",
-        "port terminal",
+        "oil depot",
 
         "терминал",
         "нефтебаз",
-        "нпз",
-        "нефтеперераб",
         "завод",
         "предприят",
         "промышлен",
         "порт",
-        "резервуар",
-        "хранилищ",
         "подстанц",
+        "резервуар",
     ]
 
-    has_fire = any(
-        term in text
-        for term in fire_terms
-    )
-
-    has_industrial_context = any(
-        term in text
-        for term in industrial_terms
-    )
-
     if (
-        has_fire
-        and has_industrial_context
+        any(
+            term in text
+            for term in fire_terms
+        )
+        and
+        any(
+            term in text
+            for term in industrial_terms
+        )
     ):
         return EventCategory.industrial_fire
 
-    # --------------------------------------------------
-    # Wildfires / vegetation fires
-    # --------------------------------------------------
+    # -------------------------------
+    # Wildfire
+    # -------------------------------
 
-    wildfire_terms = [
+    direct_wildfire_terms = [
         "wildfire",
         "forest fire",
-        "vegetation fire",
-        "brush fire",
 
-        "лесной пожар",
-        "лесных пожара",
-        "лесных пожаров",
-        "природный пожар",
-        "ландшафтный пожар",
-        "горит лес",
-        "лес горит",
-        "пожар в лесном массиве",
         "лесопожар",
-        "заповедник",
+        "природный пожар",
+        "пожар в лесном массиве",
     ]
 
-    if any(
+    has_fire_signal = any(
         term in text
-        for term in wildfire_terms
+        for term in [
+            "fire",
+            "пожар",
+            "возгора",
+            "горит",
+            "горел",
+        ]
+    )
+
+    has_forest_context = any(
+        term in text
+        for term in [
+            "лесн",
+            "заповедник",
+            "утриш",
+        ]
+    )
+
+    if (
+        any(
+            term in text
+            for term in direct_wildfire_terms
+        )
+        or (
+            has_fire_signal
+            and has_forest_context
+        )
     ):
         return EventCategory.wildfire
 
-    # --------------------------------------------------
-    # Edible / vegetable oil pollution
-    # --------------------------------------------------
+    # -------------------------------
+    # Edible oil
+    # -------------------------------
 
     edible_oil_terms = [
         "sunflower oil",
         "vegetable oil",
-        "edible oil",
-        "cooking oil",
 
         "подсолнечное масло",
         "растительное масло",
-        "пищевое масло",
     ]
 
     if any(
@@ -112,69 +133,54 @@ def detect_category(text: str):
     ):
         return EventCategory.water_pollution
 
-    # --------------------------------------------------
-    # Petroleum spills / pollution
-    # --------------------------------------------------
+    # -------------------------------
+    # Oil spill
+    # -------------------------------
 
-    petroleum_terms = [
-        "petroleum",
+    oil_terms = [
         "crude oil",
         "fuel oil",
-        "diesel",
+        "petroleum",
         "hydrocarbon",
-        "mazut",
 
         "нефть",
         "мазут",
         "нефтепродукт",
-        "дизель",
-        "топливо",
     ]
 
     spill_terms = [
         "spill",
-        "pollution",
-        "contamination",
         "leak",
-        "discharge",
+        "pollution",
 
         "разлив",
-        "загрязнен",
-        "загрязнение",
         "утечк",
-        "сброс",
+        "загрязн",
     ]
 
-    has_petroleum = any(
-        term in text
-        for term in petroleum_terms
-    )
-
-    has_spill_signal = any(
-        term in text
-        for term in spill_terms
-    )
-
     if (
-        has_petroleum
-        and has_spill_signal
+        any(
+            term in text
+            for term in oil_terms
+        )
+        and
+        any(
+            term in text
+            for term in spill_terms
+        )
     ):
         return EventCategory.oil_spill
 
-    # --------------------------------------------------
-    # Chemical release
-    # --------------------------------------------------
+    # -------------------------------
+    # Chemical
+    # -------------------------------
 
     chemical_terms = [
         "chemical release",
         "chemical spill",
-        "toxic release",
-        "toxic leak",
 
         "химический выброс",
-        "химическая утечка",
         "разлив химикатов",
-        "токсичный выброс",
     ]
 
     if any(
@@ -183,121 +189,269 @@ def detect_category(text: str):
     ):
         return EventCategory.chemical_release
 
-    # --------------------------------------------------
+    # -------------------------------
     # General water pollution
-    # --------------------------------------------------
+    # -------------------------------
 
-    water_pollution_terms = [
-        "water pollution",
+    pollution_terms = [
         "marine pollution",
+        "water pollution",
         "contamination",
         "sewage",
-        "contaminated runoff",
-        "algae bloom",
 
         "загрязнение моря",
         "загрязнение воды",
-        "загрязнение акватории",
         "сточные воды",
-        "стоки",
-        "цветение воды",
     ]
 
     if any(
         term in text
-        for term in water_pollution_terms
+        for term in pollution_terms
     ):
         return EventCategory.water_pollution
 
     return None
 
 
-def detect_location(text: str):
+# =====================================================
+# INCIDENT SIGNAL DETECTION
+# =====================================================
 
-    text = text.lower()
+
+def detect_incident_signal(
+    text: str
+) -> bool:
+
+    incident_terms = [
+
+        # English
+
+        "fire",
+        "wildfire",
+        "burning",
+        "firefighters",
+        "extinguished",
+        "contained",
+        "spill",
+        "leak",
+        "pollution",
+        "contamination",
+
+        # Russian
+
+        "пожар",
+        "возгора",
+        "горит",
+        "горел",
+
+        "огнеборцы",
+        "пожарные",
+
+        "тушат",
+        "тушится",
+        "ликвидируют",
+
+        "ликвидирован",
+        "локализован",
+
+        "потушен",
+        "потушили",
+
+        "разлив",
+        "утечк",
+
+        "загрязнен",
+        "загрязнён",
+    ]
+
+    return any(
+        term in text
+        for term in incident_terms
+    )
+
+
+# =====================================================
+# LOCATION DETECTION
+# =====================================================
+
+
+def detect_location(
+    text: str
+):
+
+    # More specific locations come before broader regions.
 
     locations = {
-        "odesa": "Odesa",
-        "odessa": "Odesa",
-        "одесса": "Odesa",
-        "одеса": "Odesa",
 
-        "anapa": "Anapa",
-        "анапа": "Anapa",
-        "анапский": "Anapa",
+        "novorossiysk":
+        "Novorossiysk",
 
-        "novorossiysk": "Novorossiysk",
-        "новороссийск": "Novorossiysk",
+        "новороссийск":
+        "Novorossiysk",
 
-        "gelendzhik": "Gelendzhik",
-        "геленджик": "Gelendzhik",
 
-        "tuapse": "Tuapse",
-        "туапсе": "Tuapse",
+        "sevastopol":
+        "Sevastopol",
 
-        "sochi": "Sochi",
-        "сочи": "Sochi",
+        "севастополь":
+        "Sevastopol",
 
-        "bulgaria": "Bulgaria",
-        "болгария": "Bulgaria",
 
-        "varna": "Varna",
-        "варна": "Varna",
+        "gelendzhik":
+        "Gelendzhik",
 
-        "burgas": "Burgas",
-        "бургас": "Burgas",
+        "геленджик":
+        "Gelendzhik",
 
-        "romania": "Romania",
-        "румыния": "Romania",
 
-        "constanta": "Constanta",
-        "констанца": "Constanta",
+        "anapa":
+        "Anapa",
 
-        "crimea": "Crimea",
-        "крым": "Crimea",
+        "анап":
+        "Anapa",
 
-        "sevastopol": "Sevastopol",
-        "севастополь": "Sevastopol",
 
-        "kerch": "Kerch Strait",
-        "керч": "Kerch Strait",
+        "tuapse":
+        "Tuapse",
 
-        "kherson": "Kherson",
-        "херсон": "Kherson",
+        "туапсе":
+        "Tuapse",
 
-        "batumi": "Batumi",
-        "батуми": "Batumi",
 
-        "trabzon": "Trabzon",
-        "трабзон": "Trabzon",
+        "sochi":
+        "Sochi",
 
-        "krasnodar krai": "Krasnodar Krai",
-        "краснодарский край": "Krasnodar Krai",
+        "сочи":
+        "Sochi",
+
+
+        "odesa":
+        "Odesa",
+
+        "odessa":
+        "Odesa",
+
+        "одесс":
+        "Odesa",
+
+
+        "varna":
+        "Varna",
+
+        "варн":
+        "Varna",
+
+
+        "burgas":
+        "Burgas",
+
+        "бургас":
+        "Burgas",
+
+
+        "constanta":
+        "Constanta",
+
+        "constanța":
+        "Constanta",
+
+        "констанц":
+        "Constanta",
+
+
+        "kerch":
+        "Kerch Strait",
+
+        "керч":
+        "Kerch Strait",
+
+
+        "kherson":
+        "Kherson",
+
+        "херсон":
+        "Kherson",
+
+
+        "batumi":
+        "Batumi",
+
+        "батуми":
+        "Batumi",
+
+
+        "trabzon":
+        "Trabzon",
+
+        "трабзон":
+        "Trabzon",
+
+
+        "krasnodar krai":
+        "Krasnodar Krai",
+
+        "krasnodar region":
+        "Krasnodar Krai",
+
+        "краснодарский край":
+        "Krasnodar Krai",
+
+        "кубан":
+        "Krasnodar Krai",
+
+
+        "crimea":
+        "Crimea",
+
+        "крым":
+        "Crimea",
+
+
+        "bulgaria":
+        "Bulgaria",
+
+        "болгар":
+        "Bulgaria",
+
+
+        "romania":
+        "Romania",
+
+        "румын":
+        "Romania",
     }
 
-    for keyword, location in locations.items():
+    for key, value in locations.items():
 
-        if keyword in text:
-            return location
+        if key in text:
+
+            return value
 
     if (
         "black sea" in text
-        or "черное море" in text
-        or "чёрное море" in text
+        or
+        "черное море" in text
+        or
+        "чёрное море" in text
     ):
+
         return "Black Sea"
 
     return None
+
+
+# =====================================================
+# MAIN CLASSIFIER
+# =====================================================
 
 
 def classify_news_item(
     item: NewsItem
 ) -> NewsClassification:
 
-    text = (
-        f"{item.title} "
-        f"{item.summary or ''}"
-    ).lower()
+    text = build_text(
+        item
+    )
 
     category = detect_category(
         text
@@ -307,319 +461,257 @@ def classify_news_item(
         text
     )
 
-    # --------------------------------------------------
-    # Explicit absence of pollution
-    # --------------------------------------------------
-
-    clear_terms = [
-        "no signs of active pollution",
-        "no pollution detected",
-        "waters clean",
-        "no contamination detected",
-
-        "загрязнение не выявлено",
-        "загрязнений не выявлено",
-        "следов загрязнения не обнаружено",
-        "вода соответствует норме",
-    ]
+    # ---------------------------------
+    # Explicit clear reports
+    # ---------------------------------
 
     if any(
-        phrase in text
-        for phrase in clear_terms
+        term in text
+        for term in [
+            "no pollution detected",
+            "no contamination detected",
+            "no signs of active pollution",
+            "waters clean",
+
+            "загрязнение не выявлено",
+            "загрязнений не выявлено",
+        ]
     ):
+
         return NewsClassification(
-            classification=NewsClassificationType.clear,
+            classification=
+            NewsClassificationType.clear,
+
             category=category,
+
             location_name=location,
-            confidence=0.90,
+
+            confidence=0.9,
+
             is_new_event=False,
+
             event_date=None,
+
+            reason=
+            "Pollution was explicitly not detected.",
+        )
+
+    # ---------------------------------
+    # Background
+    # ---------------------------------
+
+    if any(
+        term in text
+        for term in [
+            "research",
+            "study",
+            "programme",
+            "program",
+            "project",
+            "strategy",
+
+            "исследование",
+            "программа",
+            "проект",
+            "стратегия",
+        ]
+    ):
+
+        return NewsClassification(
+            classification=
+            NewsClassificationType.background,
+
+            category=category,
+
+            location_name=location,
+
+            confidence=0.75,
+
+            is_new_event=False,
+
+            event_date=None,
+
+            reason=
+            "Background environmental information.",
+        )
+
+    # ---------------------------------
+    # Ignore ordinary residential fires
+    # ---------------------------------
+
+    residential_terms = [
+        "в доме",
+        "в жилом доме",
+        "в частном доме",
+        "в квартире",
+        "жилой дом",
+        "частный дом",
+        "квартира",
+
+        "house fire",
+        "apartment fire",
+        "residential fire",
+    ]
+
+    fire_context_terms = [
+        "пожар",
+        "возгора",
+        "fire",
+    ]
+
+    has_residential_context = any(
+        term in text
+        for term in residential_terms
+    )
+
+    has_fire_context = any(
+        term in text
+        for term in fire_context_terms
+    )
+
+    if (
+        has_residential_context
+        and has_fire_context
+        and category is None
+    ):
+
+        return NewsClassification(
+            classification=
+            NewsClassificationType.noise,
+
+            category=None,
+
+            location_name=location,
+
+            confidence=0.8,
+
+            is_new_event=False,
+
+            event_date=None,
+
             reason=(
-                "The report explicitly states that "
-                "active pollution was not detected."
+                "Ordinary residential fire is not "
+                "an environmental monitoring event."
             ),
         )
 
-    # --------------------------------------------------
-    # Forecast / future threat
-    # --------------------------------------------------
+    # ---------------------------------
+    # Completed / contained incidents
+    # ---------------------------------
 
-    forecast_terms = [
-        "could trigger",
-        "could cause",
-        "may cause",
-        "risk of pollution",
-        "threat of pollution",
+    completed_terms = [
 
-        "может привести",
-        "может вызвать",
-        "угроза загрязнения",
-        "риск загрязнения",
-    ]
+        # English
 
-    if any(
-        phrase in text
-        for phrase in forecast_terms
-    ):
-        return NewsClassification(
-            classification=NewsClassificationType.forecast,
-            category=category,
-            location_name=location,
-            confidence=0.80,
-            is_new_event=False,
-            event_date=None,
-            reason=(
-                "The report describes a possible future "
-                "environmental impact."
-            ),
-        )
-
-    # --------------------------------------------------
-    # Follow-up / extinguished / localized / cleanup
-    # --------------------------------------------------
-
-    follow_up_terms = [
-        "cleanup",
-        "reopen",
-        "ongoing environmental impact",
-        "aftermath",
-        "recovery",
         "extinguished",
         "contained",
+        "cleanup completed",
+        "recovery completed",
+
+        # Russian
 
         "ликвидирован",
+        "ликвидирована",
+        "ликвидированы",
         "ликвидировали",
-        "потушили",
+
         "потушен",
+        "потушена",
+        "потушены",
+        "потушили",
+
         "локализован",
-        "локализовали",
-        "ликвидация последствий",
-        "очистка",
-        "уборка мазута",
+        "локализована",
+        "локализованы",
+
+        "очищен",
+        "очищена",
+        "очищены",
+
+        "убрана",
+        "убран",
+
+        "восстановлен",
+        "восстановлена",
         "восстановлено",
+        "восстановлены",
         "восстановили",
     ]
 
-    if any(
-        phrase in text
-        for phrase in follow_up_terms
+    if (
+        any(
+            term in text
+            for term in completed_terms
+        )
+        and detect_incident_signal(
+            text
+        )
     ):
-        if category is not None:
-            return NewsClassification(
-                classification=NewsClassificationType.follow_up,
-                category=category,
-                location_name=location,
-                confidence=0.80,
-                is_new_event=False,
-                event_date=None,
-                reason=(
-                    "The report concerns response, containment "
-                    "or consequences of an earlier incident."
-                ),
-            )
 
-    # --------------------------------------------------
-    # General programmes / research / policy
-    # --------------------------------------------------
-
-    background_terms = [
-        "addressing pollution",
-        "empowering the black sea",
-        "climate agenda",
-        "strategy",
-        "programme",
-        "program",
-        "project officially launched",
-        "monitoring of black sea pollution",
-
-        "исследование",
-        "мониторинг состояния",
-        "проект запущен",
-        "программа",
-        "стратегия",
-    ]
-
-    if any(
-        phrase in text
-        for phrase in background_terms
-    ):
         return NewsClassification(
-            classification=NewsClassificationType.background,
+            classification=
+            NewsClassificationType.follow_up,
+
             category=category,
+
             location_name=location,
-            confidence=0.75,
+
+            confidence=0.8,
+
             is_new_event=False,
+
             event_date=None,
+
             reason=(
-                "The article discusses environmental issues "
-                "generally rather than a specific incident."
+                "The incident is completed, "
+                "contained or in recovery."
             ),
         )
 
-    # --------------------------------------------------
-    # Unconfirmed reports
-    # --------------------------------------------------
+    # ---------------------------------
+    # Candidate incident
+    # ---------------------------------
 
-    reported_terms = [
-        "reports of oil pollution",
-        "checks reports",
-        "responds to reports",
-        "investigating reports",
-        "suspected pollution",
-        "possible spill",
-
-        "сообщения о загрязнении",
-        "проверяют сообщения",
-        "проверяет сообщения",
-        "возможный разлив",
-        "предполагаемый разлив",
-        "подозрение на загрязнение",
-    ]
-
-    if any(
-        phrase in text
-        for phrase in reported_terms
+    if detect_incident_signal(
+        text
     ):
+
         return NewsClassification(
-            classification=NewsClassificationType.reported,
+            classification=
+            NewsClassificationType.incident,
+
             category=category,
+
             location_name=location,
-            confidence=0.75,
+
+            confidence=0.7,
+
             is_new_event=None,
+
             event_date=None,
-            reason=(
-                "A possible incident has been reported "
-                "but is still being investigated."
-            ),
+
+            reason=
+            "Potential environmental incident candidate.",
         )
 
-    # --------------------------------------------------
-    # Wildfire
-    # --------------------------------------------------
-
-    if category == EventCategory.wildfire:
-
-        wildfire_active_terms = [
-            "wildfire",
-            "forest fire",
-            "vegetation fire",
-            "brush fire",
-
-            "лесной пожар",
-            "лесных пожара",
-            "лесных пожаров",
-            "природный пожар",
-            "ландшафтный пожар",
-            "пожар в лесном массиве",
-            "горит лес",
-            "лес горит",
-            "тушат",
-            "тушат с воздуха",
-        ]
-
-        if any(
-            phrase in text
-            for phrase in wildfire_active_terms
-        ):
-            return NewsClassification(
-                classification=NewsClassificationType.incident,
-                category=category,
-                location_name=location,
-                confidence=0.80,
-                is_new_event=None,
-                event_date=None,
-                reason=(
-                    "The article describes an active "
-                    "wildfire or vegetation fire."
-                ),
-            )
-
-    # --------------------------------------------------
-    # Industrial fire
-    # --------------------------------------------------
-
-    if category == EventCategory.industrial_fire:
-
-        industrial_fire_active_terms = [
-            "fire",
-            "burning",
-
-            "пожар",
-            "пожаре",
-            "возгора",
-            "горит",
-            "горел",
-        ]
-
-        if any(
-            phrase in text
-            for phrase in industrial_fire_active_terms
-        ):
-            return NewsClassification(
-                classification=NewsClassificationType.incident,
-                category=category,
-                location_name=location,
-                confidence=0.80,
-                is_new_event=None,
-                event_date=None,
-                reason=(
-                    "The article describes an active "
-                    "industrial or infrastructure fire."
-                ),
-            )
-
-    # --------------------------------------------------
-    # Pollution / release incidents
-    # --------------------------------------------------
-
-    if category in {
-        EventCategory.oil_spill,
-        EventCategory.water_pollution,
-        EventCategory.chemical_release,
-    }:
-
-        pollution_incident_terms = [
-            "spill into",
-            "oil spill",
-            "contaminated runoff",
-            "chemical release",
-            "contamination",
-            "pollution",
-
-            "разлив",
-            "утечк",
-            "выброс",
-            "загрязнение акватории",
-            "загрязнение моря",
-            "загрязнение воды",
-        ]
-
-        if any(
-            phrase in text
-            for phrase in pollution_incident_terms
-        ):
-            return NewsClassification(
-                classification=NewsClassificationType.incident,
-                category=category,
-                location_name=location,
-                confidence=0.80,
-                is_new_event=None,
-                event_date=None,
-                reason=(
-                    "The article describes an environmental "
-                    "pollution or release incident."
-                ),
-            )
+    # ---------------------------------
+    # Noise
+    # ---------------------------------
 
     return NewsClassification(
-        classification=NewsClassificationType.noise,
+        classification=
+        NewsClassificationType.noise,
+
         category=category,
+
         location_name=location,
-        confidence=0.60,
+
+        confidence=0.6,
+
         is_new_event=False,
+
         event_date=None,
-        reason=(
-            "No specific environmental incident was "
-            "identified by the rule-based classifier."
-        ),
+
+        reason=
+        "No incident signal detected.",
     )

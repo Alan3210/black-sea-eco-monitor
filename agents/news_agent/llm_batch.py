@@ -1,45 +1,83 @@
+from agents.news_agent.agent import NewsAgent
+from agents.news_agent.category_evidence_guard import (
+    apply_category_evidence_guard,
+)
 from agents.news_agent.event_builder import (
     build_environmental_event,
 )
-
 from agents.news_agent.event_gate import (
     evaluate_event_candidate,
     EventGateAction,
 )
-
-from agents.news_agent.lifecycle_guard import (
-    apply_lifecycle_guard,
-)
-
-from agents.news_agent.agent import NewsAgent
-
 from agents.news_agent.filter import (
     filter_black_sea_incidents,
 )
-
+from agents.news_agent.freshness_gate import (
+    evaluate_news_freshness,
+)
+from agents.news_agent.incident_evidence_guard import (
+    apply_incident_evidence_guard,
+)
+from agents.news_agent.lifecycle_guard import (
+    apply_lifecycle_guard,
+)
+from agents.news_agent.llm_classifier import (
+    classify_news_with_llm,
+)
 from agents.news_agent.rule_classifier import (
     classify_news_item,
 )
 
-from agents.news_agent.llm_classifier import (
-    classify_news_with_llm,
-)
 
-from agents.news_agent.event_gate import (
-    evaluate_event_candidate,
-    EventGateAction,
-)
-
-from agents.news_agent.freshness_gate import (
-    evaluate_news_freshness,
-)
-
-
-# Maximum number of FRESH candidates
-# that will be sent to the LLM.
-#
-# None = process all fresh candidates.
 BATCH_LIMIT = 5
+
+
+def print_classification_result(
+    label,
+    result,
+):
+
+    print(label)
+
+    print(
+        f"  Classification: "
+        f"{result.classification.value}"
+    )
+
+    print(
+        f"  Category: "
+        f"{result.category}"
+    )
+
+    print(
+        f"  Location: "
+        f"{result.location_name}"
+    )
+
+    print(
+        f"  Black Sea region: "
+        f"{result.is_black_sea_region}"
+    )
+
+    print(
+        f"  Confidence: "
+        f"{result.confidence}"
+    )
+
+    print(
+        f"  New event: "
+        f"{result.is_new_event}"
+    )
+
+    print(
+        f"  Event date: "
+        f"{result.event_date}"
+    )
+
+    print(
+        f"  Reason: "
+        f"{result.reason}"
+    )
 
 
 def main():
@@ -49,19 +87,11 @@ def main():
     print("Collecting news...")
     print()
 
-    # --------------------------------------------------
-    # 1. Collect RSS news
-    # --------------------------------------------------
-
     items = agent.collect()
 
     print(
         f"Collected: {len(items)}"
     )
-
-    # --------------------------------------------------
-    # 2. Environmental pre-filter
-    # --------------------------------------------------
 
     relevant_items = agent.analyze(
         items
@@ -71,10 +101,6 @@ def main():
         f"Environmentally relevant: "
         f"{len(relevant_items)}"
     )
-
-    # --------------------------------------------------
-    # 3. Black Sea candidate pre-filter
-    # --------------------------------------------------
 
     candidates = filter_black_sea_incidents(
         relevant_items
@@ -87,10 +113,6 @@ def main():
 
     print()
 
-    # --------------------------------------------------
-    # 4. Freshness filter
-    # --------------------------------------------------
-
     fresh_candidates = []
 
     print("FRESHNESS CHECK")
@@ -98,7 +120,7 @@ def main():
 
     for index, item in enumerate(
         candidates,
-        start=1
+        start=1,
     ):
 
         freshness = evaluate_news_freshness(
@@ -156,10 +178,6 @@ def main():
         f"{len(fresh_candidates)}"
     )
 
-    # --------------------------------------------------
-    # 5. Limit expensive LLM processing
-    # --------------------------------------------------
-
     if BATCH_LIMIT is None:
 
         selected_candidates = (
@@ -181,13 +199,9 @@ def main():
     print("=" * 80)
     print()
 
-    # --------------------------------------------------
-    # 6. Rule-Based + LLM + Event Gate
-    # --------------------------------------------------
-
     for index, item in enumerate(
         selected_candidates,
-        start=1
+        start=1,
     ):
 
         print(
@@ -204,140 +218,75 @@ def main():
 
         print()
 
-        # ----------------------------------------------
-        # Rule-based classification
-        # ----------------------------------------------
-
         rule_result = classify_news_item(
             item
         )
 
-        print("RULE-BASED")
-
-        print(
-            f"  Classification: "
-            f"{rule_result.classification.value}"
-        )
-
-        print(
-            f"  Category: "
-            f"{rule_result.category}"
-        )
-
-        print(
-            f"  Location: "
-            f"{rule_result.location_name}"
-        )
-
-        print(
-            f"  Black Sea region: "
-            f"{rule_result.is_black_sea_region}"
-        )
-
-        print(
-            f"  New event: "
-            f"{rule_result.is_new_event}"
-        )
-
-        print(
-            f"  Event date: "
-            f"{rule_result.event_date}"
-        )
-
-        print(
-            f"  Confidence: "
-            f"{rule_result.confidence}"
+        print_classification_result(
+            "RULE-BASED",
+            rule_result,
         )
 
         print()
 
-        # ----------------------------------------------
-        # LLM classification
-        # ----------------------------------------------
-
         try:
 
-            llm_result = (
-                classify_news_with_llm(
-                    item
-                )
+            llm_result = classify_news_with_llm(
+                item
             )
 
-            guarded_result = apply_lifecycle_guard(
-                item,
+            print_classification_result(
+                "LLM",
                 llm_result,
-            )
-
-            print("LLM")
-
-            print(
-                f"  Classification: "
-                f"{llm_result.classification.value}"
-            )
-
-            print(
-                f"  Category: "
-                f"{llm_result.category}"
-            )
-
-            print(
-                f"  Location: "
-                f"{llm_result.location_name}"
-            )
-
-            print(
-                f"  Black Sea region: "
-                f"{llm_result.is_black_sea_region}"
-            )
-
-            print(
-                f"  Confidence: "
-                f"{llm_result.confidence}"
-            )
-
-            print(
-                f"  New event: "
-                f"{llm_result.is_new_event}"
-            )
-
-            print(
-                f"  Event date: "
-                f"{llm_result.event_date}"
-            )
-
-            print(
-                f"  Reason: "
-                f"{llm_result.reason}"
             )
 
             print()
 
-            print("LIFECYCLE GUARD")
-
-            print(
-                f"  Classification: "
-                f"{guarded_result.classification.value}"
+            category_guard_result = (
+                apply_category_evidence_guard(
+                    item,
+                    llm_result,
+                )
             )
 
-            print(
-                f"  New event: "
-                f"{guarded_result.is_new_event}"
+            print_classification_result(
+                "CATEGORY EVIDENCE GUARD",
+                category_guard_result,
             )
 
-            print(
-                f"  Reason: "
-                f"{guarded_result.reason}"
+            print()
+
+            lifecycle_guard_result = (
+                apply_lifecycle_guard(
+                    item,
+                    category_guard_result,
+                )
             )
 
-            # ------------------------------------------
-            # Event Gate
-            # ------------------------------------------
+            print_classification_result(
+                "LIFECYCLE GUARD",
+                lifecycle_guard_result,
+            )
 
+            print()
 
+            final_guarded_result = (
+                apply_incident_evidence_guard(
+                    lifecycle_guard_result,
+                    rule_result,
+                )
+            )
+
+            print_classification_result(
+                "INCIDENT EVIDENCE GUARD",
+                final_guarded_result,
+            )
+
+            print()
 
             gate_decision = (
                 evaluate_event_candidate(
-                    guarded_result
+                    final_guarded_result
                 )
             )
 
@@ -353,11 +302,6 @@ def main():
                 f"{gate_decision.reason}"
             )
 
-
-            # ------------------------------------------
-            # Event Builder
-            # ------------------------------------------
-
             if (
                 gate_decision.action
                 == EventGateAction.create_event
@@ -365,11 +309,10 @@ def main():
 
                 event = build_environmental_event(
                     item,
-                    guarded_result
+                    final_guarded_result,
                 )
 
                 print()
-
                 print("EVENT BUILDER")
 
                 print(
@@ -378,10 +321,6 @@ def main():
                     )
                 )
 
-                print()
-
-
-            
         except Exception as error:
 
             print("LLM ERROR")
