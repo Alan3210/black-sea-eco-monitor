@@ -1,10 +1,12 @@
 import html
 import logging
 import re
+import urllib.request
 
 import feedparser
 
 from agents.news_agent.models import NewsItem
+
 from agents.news_agent.sources import (
     NEWS_SOURCES,
     NewsSource,
@@ -60,12 +62,36 @@ def normalize_title(
     return title.strip()
 
 
+def fetch_feed(
+    url: str
+):
+
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent":
+            "BlackSeaEcoMonitor/1.0"
+        }
+    )
+
+    with urllib.request.urlopen(
+        request,
+        timeout=10
+    ) as response:
+
+        return response.read()
+
+
 def collect_source(
     source: NewsSource
 ) -> list[NewsItem]:
 
-    feed = feedparser.parse(
+    raw_feed = fetch_feed(
         source.url
+    )
+
+    feed = feedparser.parse(
+        raw_feed
     )
 
     entries = getattr(
@@ -123,15 +149,18 @@ def collect_source(
 
             publisher = source.name
 
+
         published_at = (
             entry.get("published")
             or entry.get("updated")
         )
 
+
         summary = clean_text(
             entry.get("summary")
             or entry.get("description")
         )
+
 
         items.append(
             NewsItem(
@@ -143,7 +172,9 @@ def collect_source(
             )
         )
 
+
     return items
+
 
 
 def deduplicate_items(
@@ -153,6 +184,7 @@ def deduplicate_items(
     unique_items = []
 
     seen_titles = set()
+
 
     for item in items:
 
@@ -171,7 +203,9 @@ def deduplicate_items(
             item
         )
 
+
     return unique_items
+
 
 
 def collect_all_sources(
@@ -182,12 +216,15 @@ def collect_all_sources(
 
         sources = NEWS_SOURCES
 
+
     collected_items = []
+
 
     for source in sources:
 
         if not source.enabled:
             continue
+
 
         try:
 
@@ -195,14 +232,17 @@ def collect_all_sources(
                 source
             )
 
+
             collected_items.extend(
                 source_items
             )
+
 
             print(
                 f"[SOURCE] {source.name}: "
                 f"{len(source_items)} items"
             )
+
 
         except Exception as error:
 
@@ -212,25 +252,31 @@ def collect_all_sources(
                 error,
             )
 
+
             print(
                 f"[SOURCE ERROR] "
                 f"{source.name}: "
                 f"{error}"
             )
 
+
     unique_items = deduplicate_items(
         collected_items
     )
 
+
     print()
+
     print(
         f"[COLLECTOR] Raw items: "
         f"{len(collected_items)}"
     )
 
+
     print(
         f"[COLLECTOR] Unique items: "
         f"{len(unique_items)}"
     )
+
 
     return unique_items

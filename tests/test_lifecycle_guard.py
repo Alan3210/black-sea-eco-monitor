@@ -176,3 +176,42 @@ def test_active_wildfire_is_not_changed():
     )
 
     assert result.is_new_event is True
+
+def test_active_firefighting_stays_incident():
+
+    item = make_item(
+        "Сразу три лесных пожара тушат "
+        "в Новороссийске"
+    )
+
+    result = apply_lifecycle_guard(
+        item,
+        make_incident(),
+    )
+
+    assert (
+        result.classification
+        == NewsClassificationType.incident
+    )
+
+    assert result.is_new_event is True
+
+
+def test_liquidated_fire_becomes_follow_up():
+
+    item = make_item(
+        "Лесной пожар возле хутора Дюрсо "
+        "ликвидирован"
+    )
+
+    result = apply_lifecycle_guard(
+        item,
+        make_incident(),
+    )
+
+    assert (
+        result.classification
+        == NewsClassificationType.follow_up
+    )
+
+    assert result.is_new_event is False

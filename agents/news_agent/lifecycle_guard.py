@@ -24,17 +24,16 @@ CLEAR_TERMS = [
 ]
 
 
-FOLLOW_UP_TERMS = [
+COMPLETED_TERMS = [
+
     # English
-    "cleanup",
-    "clean-up",
+    "cleanup completed",
     "extinguished",
     "contained",
     "reopened",
     "reopen",
     "recovery",
     "aftermath",
-    "cleanup completed",
 
     # Russian
     "ликвидирован",
@@ -53,7 +52,6 @@ FOLLOW_UP_TERMS = [
     "локализовали",
 
     "ликвидация последствий",
-    "устранение последствий",
 
     "очистка",
     "очищен",
@@ -71,6 +69,25 @@ FOLLOW_UP_TERMS = [
     "открытие пляжей",
 ]
 
+
+ACTIVE_RESPONSE_TERMS = [
+
+    # English
+    "cleanup",
+    "containing",
+    "controlling",
+    "firefighting",
+
+    # Russian
+    "ликвидируют",
+    "тушат",
+    "тушится",
+    "ведется тушение",
+    "ведётся тушение",
+    "проводится тушение",
+    "идет тушение",
+    "идёт тушение",
+]
 
 def build_lifecycle_text(
     item: NewsItem
@@ -122,7 +139,7 @@ def apply_lifecycle_guard(
 
     if any(
         term in text
-        for term in FOLLOW_UP_TERMS
+        for term in COMPLETED_TERMS
     ):
 
         return classification.model_copy(
@@ -141,6 +158,23 @@ def apply_lifecycle_guard(
                 ),
             }
         )
+        if any(
+            term in text
+            for term in ACTIVE_RESPONSE_TERMS
+        ):
+
+            return classification.model_copy(
+                update={
+                    "is_new_event": True,
+
+                    "reason": (
+                        "Lifecycle Guard: the wording indicates "
+                        "active response or firefighting is "
+                        "currently ongoing."
+                    ),
+                }
+            )
+
 
     # --------------------------------------------------
     # No deterministic lifecycle signal.

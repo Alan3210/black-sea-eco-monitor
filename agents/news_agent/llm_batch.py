@@ -1,3 +1,16 @@
+from agents.news_agent.event_builder import (
+    build_environmental_event,
+)
+
+from agents.news_agent.event_gate import (
+    evaluate_event_candidate,
+    EventGateAction,
+)
+
+from agents.news_agent.lifecycle_guard import (
+    apply_lifecycle_guard,
+)
+
 from agents.news_agent.agent import NewsAgent
 
 from agents.news_agent.filter import (
@@ -14,6 +27,7 @@ from agents.news_agent.llm_classifier import (
 
 from agents.news_agent.event_gate import (
     evaluate_event_candidate,
+    EventGateAction,
 )
 
 from agents.news_agent.freshness_gate import (
@@ -249,6 +263,11 @@ def main():
                 )
             )
 
+            guarded_result = apply_lifecycle_guard(
+                item,
+                llm_result,
+            )
+
             print("LLM")
 
             print(
@@ -293,13 +312,32 @@ def main():
 
             print()
 
+            print("LIFECYCLE GUARD")
+
+            print(
+                f"  Classification: "
+                f"{guarded_result.classification.value}"
+            )
+
+            print(
+                f"  New event: "
+                f"{guarded_result.is_new_event}"
+            )
+
+            print(
+                f"  Reason: "
+                f"{guarded_result.reason}"
+            )
+
             # ------------------------------------------
             # Event Gate
             # ------------------------------------------
 
+
+
             gate_decision = (
                 evaluate_event_candidate(
-                    llm_result
+                    guarded_result
                 )
             )
 
@@ -315,6 +353,35 @@ def main():
                 f"{gate_decision.reason}"
             )
 
+
+            # ------------------------------------------
+            # Event Builder
+            # ------------------------------------------
+
+            if (
+                gate_decision.action
+                == EventGateAction.create_event
+            ):
+
+                event = build_environmental_event(
+                    item,
+                    guarded_result
+                )
+
+                print()
+
+                print("EVENT BUILDER")
+
+                print(
+                    event.model_dump_json(
+                        indent=2
+                    )
+                )
+
+                print()
+
+
+            
         except Exception as error:
 
             print("LLM ERROR")
