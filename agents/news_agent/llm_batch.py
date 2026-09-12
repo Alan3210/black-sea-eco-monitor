@@ -1,3 +1,10 @@
+from agents.news_agent.location_resolver import (
+    normalize_location_name,
+)
+from agents.news_agent.oil_spill_evidence_guard import (
+    apply_oil_spill_evidence_guard,
+)
+
 from agents.news_agent.agent import NewsAgent
 from agents.news_agent.category_evidence_guard import (
     apply_category_evidence_guard,
@@ -27,9 +34,13 @@ from agents.news_agent.llm_classifier import (
 from agents.news_agent.rule_classifier import (
     classify_news_item,
 )
+from agents.news_agent.event_correlation import (
+    EventCandidate,
+    cluster_event_candidates,
+)
 
 
-BATCH_LIMIT = 5
+BATCH_LIMIT = None
 
 
 def print_classification_result(
@@ -199,6 +210,8 @@ def main():
     print("=" * 80)
     print()
 
+    event_candidates = []
+
     for index, item in enumerate(
         selected_candidates,
         start=1,
@@ -256,10 +269,24 @@ def main():
 
             print()
 
+            oil_spill_guard_result = (
+                apply_oil_spill_evidence_guard(
+                    item,
+                    category_guard_result,
+                )
+            )
+
+            print_classification_result(
+                "OIL SPILL EVIDENCE GUARD",
+                oil_spill_guard_result,
+            )
+
+            print()
+
             lifecycle_guard_result = (
                 apply_lifecycle_guard(
                     item,
-                    category_guard_result,
+                    oil_spill_guard_result,
                 )
             )
 
@@ -284,9 +311,27 @@ def main():
 
             print()
 
+            normalized_result = (
+                final_guarded_result.model_copy(
+                    update={
+                        "location_name":
+                        normalize_location_name(
+                            final_guarded_result.location_name
+                        )
+                    }
+                )
+            )
+
+            print_classification_result(
+                "LOCATION RESOLVER",
+                normalized_result,
+            )
+
+            print()
+
             gate_decision = (
                 evaluate_event_candidate(
-                    final_guarded_result
+                    normalized_result
                 )
             )
 
@@ -309,7 +354,7 @@ def main():
 
                 event = build_environmental_event(
                     item,
-                    final_guarded_result,
+                    normalized_result,
                 )
 
                 print()
@@ -318,6 +363,13 @@ def main():
                 print(
                     event.model_dump_json(
                         indent=2
+                    )
+                )
+
+                event_candidates.append(
+                    EventCandidate(
+                        item=item,
+                        classification=normalized_result,
                     )
                 )
 
@@ -333,6 +385,61 @@ def main():
         print()
         print("-" * 80)
         print()
+
+    # --------------------------------------------------
+    # Event Correlation
+    # --------------------------------------------------
+
+    print()
+    print("=" * 80)
+    print()
+    print("EVENT CORRELATION")
+
+    if event_candidates:
+
+        clusters = cluster_event_candidates(
+            event_candidates
+        )
+
+        for number, cluster in enumerate(
+            clusters,
+            start=1,
+        ):
+
+            first = cluster[0].classification
+
+            print()
+            print(
+                f"Cluster #{number}"
+            )
+
+            print(
+                f"  Category: "
+                f"{first.category}"
+            )
+
+            print(
+                f"  Location: "
+                f"{first.location_name}"
+            )
+
+            print(
+                f"  Evidence count: "
+                f"{len(cluster)}"
+            )
+
+            for evidence in cluster:
+
+                print(
+                    f"    - {evidence.item.source}: "
+                    f"{evidence.item.title}"
+                )
+
+    else:
+
+        print(
+            "No created events to correlate."
+        )
 
 
 if __name__ == "__main__":
