@@ -4,6 +4,9 @@ from agents.news_agent.location_resolver import (
 from agents.news_agent.oil_spill_evidence_guard import (
     apply_oil_spill_evidence_guard,
 )
+from agents.news_agent.event_store import (
+    EventStore,
+)
 
 from agents.news_agent.agent import NewsAgent
 from agents.news_agent.category_evidence_guard import (
@@ -94,6 +97,7 @@ def print_classification_result(
 def main():
 
     agent = NewsAgent()
+    event_store = EventStore()
 
     print("Collecting news...")
     print()
@@ -371,6 +375,78 @@ def main():
                         item=item,
                         classification=normalized_result,
                     )
+                )
+
+                print()
+                print("EVENT STORE")
+
+                existing_event_id = (
+                    event_store.find_matching_event(
+                        category=(
+                            normalized_result.category.value
+                        ),
+                        location_name=(
+                            normalized_result.location_name
+                        ),
+                    )
+                )
+
+                if existing_event_id is None:
+
+                    existing_event_id = (
+                        event_store.create_event(
+                            category=(
+                                normalized_result.category.value
+                            ),
+                            location_name=(
+                                normalized_result.location_name
+                            ),
+                            primary_title=(
+                                item.title
+                            ),
+                            confidence=(
+                                normalized_result.confidence
+                            ),
+                        )
+                    )
+
+                    print(
+                        "  NEW EVENT CREATED"
+                    )
+
+                else:
+
+                    print(
+                        "  EXISTING EVENT FOUND"
+                    )
+
+                event_store.add_evidence(
+                    event_id=existing_event_id,
+                    source=item.source,
+                    title=item.title,
+                    url=getattr(
+                        item,
+                        "url",
+                        None,
+                    ),
+                    published_at=(
+                        item.published_at
+                    ),
+                    confidence=(
+                        normalized_result.confidence
+                    ),
+                    reason=(
+                        normalized_result.reason
+                    ),
+                )
+
+                print(
+                    f"  Event ID: "
+                    f"{existing_event_id}"
+                )
+
+                print(
+                    "  Evidence added: 1"
                 )
 
         except Exception as error:
