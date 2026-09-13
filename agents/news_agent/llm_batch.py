@@ -7,6 +7,9 @@ from agents.news_agent.oil_spill_evidence_guard import (
 from agents.news_agent.event_store import (
     EventStore,
 )
+from agents.news_agent.event_lifecycle import (
+    detect_lifecycle_status,
+)
 
 from agents.news_agent.agent import NewsAgent
 from agents.news_agent.category_evidence_guard import (
@@ -92,6 +95,68 @@ def print_classification_result(
         f"  Reason: "
         f"{result.reason}"
     )
+
+
+
+def apply_event_lifecycle(
+    *,
+    event_store,
+    event_id,
+    item,
+    evidence_id,
+):
+
+    lifecycle_decision = (
+        detect_lifecycle_status(
+            item.title,
+            getattr(
+                item,
+                "summary",
+                "",
+            ) or "",
+        )
+    )
+
+    history_id = event_store.update_status(
+        event_id=event_id,
+        new_status=(
+            lifecycle_decision.status
+        ),
+        reason=(
+            lifecycle_decision.reason
+        ),
+        evidence_id=evidence_id,
+    )
+
+    print()
+    print("EVENT LIFECYCLE")
+
+    print(
+        f"  Detected status: "
+        f"{lifecycle_decision.status}"
+    )
+
+    print(
+        f"  Reason: "
+        f"{lifecycle_decision.reason}"
+    )
+
+    if history_id is None:
+
+        print(
+            "  Status unchanged."
+        )
+
+    else:
+
+        print(
+            "  Status updated."
+        )
+
+        print(
+            f"  History ID: "
+            f"{history_id}"
+        )
 
 
 def main():
@@ -380,16 +445,38 @@ def main():
                 print()
                 print("EVENT STORE")
 
+                item_url = getattr(
+                    item,
+                    "url",
+                    None,
+                )
+
                 existing_event_id = (
-                    event_store.find_matching_event(
-                        category=(
-                            normalized_result.category.value
-                        ),
-                        location_name=(
-                            normalized_result.location_name
-                        ),
+                    event_store.find_event_by_evidence_url(
+                        item_url
                     )
                 )
+
+                found_by_evidence_url = (
+                    existing_event_id is not None
+                )
+
+                if existing_event_id is None:
+
+                    existing_event_id = (
+                        event_store.find_matching_event(
+                            category=(
+                                normalized_result.category.value
+                            ),
+                            location_name=(
+                                normalized_result.location_name
+                            ),
+                            title=item.title,
+                            published_at=(
+                                item.published_at
+                            ),
+                        )
+                    )
 
                 if existing_event_id is None:
 
@@ -414,30 +501,45 @@ def main():
                         "  NEW EVENT CREATED"
                     )
 
+                elif found_by_evidence_url:
+
+                    print(
+                        "  EXISTING EVENT FOUND "
+                        "BY EVIDENCE URL"
+                    )
+
                 else:
 
                     print(
-                        "  EXISTING EVENT FOUND"
+                        "  EXISTING EVENT FOUND "
+                        "BY EVENT MATCHER"
                     )
 
-                event_store.add_evidence(
-                    event_id=existing_event_id,
-                    source=item.source,
-                    title=item.title,
-                    url=getattr(
-                        item,
-                        "url",
-                        None,
-                    ),
-                    published_at=(
-                        item.published_at
-                    ),
-                    confidence=(
-                        normalized_result.confidence
-                    ),
-                    reason=(
-                        normalized_result.reason
-                    ),
+                existing_evidence_id = (
+                    event_store.find_existing_evidence_id(
+                        event_id=existing_event_id,
+                        source=item.source,
+                        title=item.title,
+                        url=item_url,
+                    )
+                )
+
+                evidence_id = (
+                    event_store.add_evidence(
+                        event_id=existing_event_id,
+                        source=item.source,
+                        title=item.title,
+                        url=item_url,
+                        published_at=(
+                            item.published_at
+                        ),
+                        confidence=(
+                            normalized_result.confidence
+                        ),
+                        reason=(
+                            normalized_result.reason
+                        ),
+                    )
                 )
 
                 print(
@@ -445,9 +547,173 @@ def main():
                     f"{existing_event_id}"
                 )
 
-                print(
-                    "  Evidence added: 1"
+                if existing_evidence_id is None:
+
+                    print(
+                        "  Evidence added: 1"
+                    )
+
+                else:
+
+                    print(
+                        "  Evidence already exists; "
+                        "reused existing record."
+                    )
+
+                apply_event_lifecycle(
+                    event_store=event_store,
+                    event_id=existing_event_id,
+                    item=item,
+                    evidence_id=evidence_id,
                 )
+
+            elif (
+                gate_decision.action
+                == EventGateAction.attach_follow_up
+            ):
+
+                print()
+                print("EVENT STORE FOLLOW-UP")
+
+                if (
+                    normalized_result.category is None
+                    or not normalized_result.location_name
+                ):
+
+                    print(
+                        "  Follow-up cannot be attached: "
+                        "category or location is missing."
+                    )
+
+                else:
+
+                    item_url = getattr(
+                        item,
+                        "url",
+                        None,
+                    )
+
+                    existing_event_id = (
+                        event_store.find_event_by_evidence_url(
+                            item_url
+                        )
+                    )
+
+                    found_by_evidence_url = (
+                        existing_event_id is not None
+                    )
+
+                    if existing_event_id is None:
+
+                        existing_event_id = (
+                            event_store.find_matching_event(
+                                category=(
+                                    normalized_result.category.value
+                                ),
+                                location_name=(
+                                    normalized_result.location_name
+                                ),
+                                title=item.title,
+                                published_at=(
+                                    item.published_at
+                                ),
+                            )
+                        )
+
+                    # Follow-up headlines can differ strongly
+                    # from the original incident headline.
+                    # If semantic title matching fails, use
+                    # the newest event with the same category
+                    # and canonical location as a temporary
+                    # conservative fallback.
+                    if existing_event_id is None:
+
+                        existing_event_id = (
+                            event_store.find_matching_event(
+                                category=(
+                                    normalized_result.category.value
+                                ),
+                                location_name=(
+                                    normalized_result.location_name
+                                ),
+                                published_at=(
+                                    item.published_at
+                                ),
+                            )
+                        )
+
+                    if existing_event_id is None:
+
+                        print(
+                            "  NO EXISTING EVENT FOUND"
+                        )
+
+                    else:
+
+                        existing_evidence_id = (
+                            event_store.find_existing_evidence_id(
+                                event_id=existing_event_id,
+                                source=item.source,
+                                title=item.title,
+                                url=item_url,
+                            )
+                        )
+
+                        evidence_id = (
+                            event_store.add_evidence(
+                                event_id=existing_event_id,
+                                source=item.source,
+                                title=item.title,
+                                url=item_url,
+                                published_at=(
+                                    item.published_at
+                                ),
+                                confidence=(
+                                    normalized_result.confidence
+                                ),
+                                reason=(
+                                    normalized_result.reason
+                                ),
+                            )
+                        )
+
+                        if found_by_evidence_url:
+
+                            print(
+                                "  FOLLOW-UP REUSED "
+                                "EXISTING EVENT BY URL"
+                            )
+
+                        else:
+
+                            print(
+                                "  FOLLOW-UP ATTACHED"
+                            )
+
+                        print(
+                            f"  Event ID: "
+                            f"{existing_event_id}"
+                        )
+
+                        if existing_evidence_id is None:
+
+                            print(
+                                "  Evidence added: 1"
+                            )
+
+                        else:
+
+                            print(
+                                "  Evidence already exists; "
+                                "reused existing record."
+                            )
+
+                        apply_event_lifecycle(
+                            event_store=event_store,
+                            event_id=existing_event_id,
+                            item=item,
+                            evidence_id=evidence_id,
+                        )
 
         except Exception as error:
 
