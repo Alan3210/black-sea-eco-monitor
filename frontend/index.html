@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Black Sea Eco Monitor — environmental incidents map"
+    />
+    <title>Black Sea Eco Monitor</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">ENVIRONMENTAL INTELLIGENCE</div>
+          <h1>Black Sea Eco Monitor</h1>
+        </div>
+
+        <div class="monitor-status" aria-live="polite">
+          <span id="connection-dot" class="status-dot status-dot--loading"></span>
+          <div>
+            <div id="connection-label">Connecting…</div>
+            <div id="update-label" class="status-subline">Waiting for API</div>
+          </div>
+        </div>
+      </header>
+
+      <main class="map-shell">
+        <div id="map" aria-label="Black Sea environmental events map"></div>
+
+        <aside class="filter-panel" aria-label="Event filters">
+          <div class="filter-panel__head">
+            <div>
+              <div class="filter-kicker">FILTERS</div>
+              <div class="filter-title">Incident view</div>
+            </div>
+            <button id="reset-filters" class="filter-reset" type="button">
+              Reset
+            </button>
+          </div>
+
+          <div class="filter-section">
+            <div class="filter-section__title">STATUS</div>
+            <label class="filter-check">
+              <input type="checkbox" data-status="detected" checked />
+              <span>Detected</span>
+            </label>
+            <label class="filter-check">
+              <input type="checkbox" data-status="active" checked />
+              <span>Active</span>
+            </label>
+            <label class="filter-check">
+              <input type="checkbox" data-status="contained" checked />
+              <span>Contained</span>
+            </label>
+            <label class="filter-check">
+              <input type="checkbox" data-status="resolved" checked />
+              <span>Resolved</span>
+            </label>
+          </div>
+
+          <div class="filter-section">
+            <div class="filter-section__title">CATEGORY</div>
+            <label class="filter-check">
+              <input type="checkbox" data-category="wildfire" checked />
+              <span class="filter-dot" style="--filter-color:#ff9f43"></span>
+              <span>Wildfire</span>
+            </label>
+            <label class="filter-check">
+              <input type="checkbox" data-category="industrial_fire" checked />
+              <span class="filter-dot" style="--filter-color:#ff5d5d"></span>
+              <span>Industrial fire</span>
+            </label>
+            <label class="filter-check">
+              <input type="checkbox" data-category="oil_spill" checked />
+              <span class="filter-dot" style="--filter-color:#6f8cff"></span>
+              <span>Oil spill</span>
+            </label>
+            <label class="filter-check">
+              <input type="checkbox" data-category="water_pollution" checked />
+              <span class="filter-dot" style="--filter-color:#46d7c8"></span>
+              <span>Water pollution</span>
+            </label>
+
+            <details class="more-categories">
+              <summary>More categories</summary>
+              <label class="filter-check">
+                <input type="checkbox" data-category="algae_bloom" checked />
+                <span class="filter-dot" style="--filter-color:#8bd96b"></span>
+                <span>Algae bloom</span>
+              </label>
+              <label class="filter-check">
+                <input type="checkbox" data-category="marine_animal_death" checked />
+                <span class="filter-dot" style="--filter-color:#bd7cff"></span>
+                <span>Marine animal death</span>
+              </label>
+              <label class="filter-check">
+                <input type="checkbox" data-category="chemical_release" checked />
+                <span class="filter-dot" style="--filter-color:#f2d95c"></span>
+                <span>Chemical release</span>
+              </label>
+              <label class="filter-check">
+                <input type="checkbox" data-category="storm_damage" checked />
+                <span class="filter-dot" style="--filter-color:#84b6ff"></span>
+                <span>Storm damage</span>
+              </label>
+            </details>
+          </div>
+
+          <div class="filter-section">
+            <div class="filter-section__title">TIME WINDOW</div>
+            <div class="time-segmented" role="radiogroup" aria-label="Time window">
+              <label>
+                <input type="radio" name="time-window" value="1" />
+                <span>24H</span>
+              </label>
+              <label>
+                <input type="radio" name="time-window" value="7" checked />
+                <span>7D</span>
+              </label>
+              <label>
+                <input type="radio" name="time-window" value="30" />
+                <span>30D</span>
+              </label>
+              <label>
+                <input type="radio" name="time-window" value="all" />
+                <span>ALL</span>
+              </label>
+            </div>
+            <div class="filter-note">
+              Time uses the monitor's latest-seen timestamp.
+            </div>
+          </div>
+        </aside>
+
+        <section class="map-legend" aria-label="Event legend">
+          <div class="legend-title">INCIDENTS</div>
+          <div class="legend-row">
+            <span class="legend-swatch" style="--swatch:#ff5d5d"></span>
+            Industrial fire
+          </div>
+          <div class="legend-row">
+            <span class="legend-swatch" style="--swatch:#ff9f43"></span>
+            Wildfire
+          </div>
+          <div class="legend-row">
+            <span class="legend-swatch" style="--swatch:#6f8cff"></span>
+            Oil spill
+          </div>
+          <div class="legend-row">
+            <span class="legend-swatch" style="--swatch:#46d7c8"></span>
+            Water pollution
+          </div>
+        </section>
+
+        <div id="event-count" class="event-count">0 events</div>
+      </main>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,82 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  eventsToFeatureCollection,
+  normalizeMonitorEvent,
+  normalizeMonitorEvents,
+} from './events.js';
+
+test('normalizes a persisted monitor event', () => {
+  const event = normalizeMonitorEvent({
+    id: 'evt_001',
+    category: 'wildfire',
+    location: {
+      name: 'Novorossiysk',
+      latitude: 44.724,
+      longitude: 37.7691,
+    },
+    status: 'resolved',
+    severity: 'medium',
+    confidence: 0.9,
+    evidence_count: 4,
+    primary_title: 'Forest fire near Novorossiysk',
+  });
+
+  assert.equal(event.id, 'evt_001');
+  assert.equal(event.categoryLabel, 'Wildfire');
+  assert.equal(event.locationName, 'Novorossiysk');
+  assert.equal(event.latitude, 44.724);
+  assert.equal(event.longitude, 37.7691);
+  assert.equal(event.evidenceCount, 4);
+});
+
+test('rejects events without usable coordinates', () => {
+  const events = normalizeMonitorEvents([
+    {
+      id: 'good',
+      category: 'wildfire',
+      location: {
+        latitude: 44.7,
+        longitude: 37.7,
+      },
+    },
+    {
+      id: 'bad',
+      category: 'wildfire',
+      location: {
+        latitude: null,
+        longitude: null,
+      },
+    },
+  ]);
+
+  assert.deepEqual(
+    events.map((event) => event.id),
+    ['good'],
+  );
+});
+
+test('converts normalized events to GeoJSON', () => {
+  const events = normalizeMonitorEvents([
+    {
+      id: 'evt_002',
+      category: 'industrial_fire',
+      location: {
+        name: 'Gelendzhik',
+        latitude: 44.5609,
+        longitude: 38.0767,
+      },
+      status: 'resolved',
+    },
+  ]);
+
+  const geojson = eventsToFeatureCollection(events);
+
+  assert.equal(geojson.type, 'FeatureCollection');
+  assert.equal(geojson.features.length, 1);
+  assert.deepEqual(
+    geojson.features[0].geometry.coordinates,
+    [38.0767, 44.5609],
+  );
+});
