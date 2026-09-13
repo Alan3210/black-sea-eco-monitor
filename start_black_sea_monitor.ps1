@@ -11,13 +11,7 @@ $FrontendDir = Join-Path $RepoRoot "frontend"
 
 $RuntimeDir = Join-Path $env:TEMP "black-sea-eco-monitor"
 $StateFile = Join-Path $RuntimeDir "processes.json"
-
-$BackendOut = Join-Path $RuntimeDir "backend.out.log"
-$BackendErr = Join-Path $RuntimeDir "backend.err.log"
-$FrontendOut = Join-Path $RuntimeDir "frontend.out.log"
-$FrontendErr = Join-Path $RuntimeDir "frontend.err.log"
-$SchedulerOut = Join-Path $RuntimeDir "scheduler.out.log"
-$SchedulerErr = Join-Path $RuntimeDir "scheduler.err.log"
+$RunId = Get-Date -Format "yyyyMMdd-HHmmss"
 
 $BackendUrl = "http://127.0.0.1:8000/"
 $FrontendUrl = "http://127.0.0.1:5173/"
@@ -78,13 +72,80 @@ function Wait-ForHttp {
     return $false
 }
 
+function Test-ProcessRunning {
+    param(
+        [object]$PidValue
+    )
+
+    if (-not $PidValue) {
+        return $false
+    }
+
+    $process = Get-Process `
+        -Id ([int]$PidValue) `
+        -ErrorAction SilentlyContinue
+
+    return $null -ne $process
+}
+
+function Find-ProcessByCommandLine {
+    param(
+        [string]$Pattern
+    )
+
+    try {
+        $match = Get-CimInstance Win32_Process |
+            Where-Object {
+                $_.CommandLine `
+                -and $_.CommandLine -match $Pattern
+            } |
+            Select-Object -First 1
+
+        if ($match) {
+            return [int]$match.ProcessId
+        }
+    }
+    catch {
+        # Best-effort only. Failure here must not prevent startup.
+    }
+
+    return $null
+}
+
+function Read-ExistingState {
+    if (-not (Test-Path $StateFile)) {
+        return $null
+    }
+
+    try {
+        return Get-Content $StateFile -Raw |
+            ConvertFrom-Json
+    }
+    catch {
+        Write-Host "Ignoring unreadable old launcher state." -ForegroundColor Yellow
+        return $null
+    }
+}
+
+function Save-State {
+    param(
+        [hashtable]$State
+    )
+
+    $State |
+        ConvertTo-Json |
+        Set-Content `
+            -Path $StateFile `
+            -Encoding UTF8
+}
+
 function Show-LogTail {
     param(
         [string]$Path,
         [int]$Lines = 20
     )
 
-    if (Test-Path $Path) {
+    if ($Path -and (Test-Path $Path)) {
         Write-Host ""
         Write-Host "Last log lines from $Path" -ForegroundColor Yellow
         Get-Content $Path -Tail $Lines
@@ -96,19 +157,17 @@ function Start-MonitorProcess {
         [string]$FilePath,
         [string[]]$Arguments,
         [string]$WorkingDirectory,
-        [string]$StdOut,
-        [string]$StdErr
+        [string]$Name
     )
 
-    if (Test-Path $StdOut) {
-        Remove-Item $StdOut -Force
-    }
+    # Each new process gets NEW log files. This is deliberate:
+    # a running process keeps its redirect file open on Windows, so trying
+    # to delete/reuse that file causes "file is being used by another process".
+    $SafeName = $Name.ToLower().Replace(" ", "-")
+    $StdOut = Join-Path $RuntimeDir "$SafeName-$RunId.out.log"
+    $StdErr = Join-Path $RuntimeDir "$SafeName-$RunId.err.log"
 
-    if (Test-Path $StdErr) {
-        Remove-Item $StdErr -Force
-    }
-
-    return Start-Process `
+    $process = Start-Process `
         -FilePath $FilePath `
         -ArgumentList $Arguments `
         -WorkingDirectory $WorkingDirectory `
@@ -116,6 +175,12 @@ function Start-MonitorProcess {
         -RedirectStandardOutput $StdOut `
         -RedirectStandardError $StdErr `
         -PassThru
+
+    return @{
+        Process = $process
+        StdOut = $StdOut
+        StdErr = $StdErr
+    }
 }
 
 if (-not (Test-Path $PythonExe)) {
@@ -132,22 +197,67 @@ if (-not $npmCommand) {
     throw "npm.cmd was not found in PATH. Install Node.js/npm first."
 }
 
-$state = [ordered]@{
+$oldState = Read-ExistingState
+
+$state = @{
     startedAt = (Get-Date).ToString("o")
 
     backendPid = $null
     backendOwned = $false
+    backendStdOut = $null
+    backendStdErr = $null
 
     frontendPid = $null
     frontendOwned = $false
+    frontendStdOut = $null
+    frontendStdErr = $null
 
     schedulerPid = $null
     schedulerOwned = $false
+    schedulerStdOut = $null
+    schedulerStdErr = $null
 }
+
+# Preserve ownership from a previous successful launcher run.
+# This makes START_MONITOR.cmd safe to run twice: STOP_MONITOR.cmd will still
+# know which already-running processes belong to us.
+if ($oldState) {
+    if (
+        $oldState.backendOwned `
+        -and (Test-ProcessRunning $oldState.backendPid)
+    ) {
+        $state.backendPid = [int]$oldState.backendPid
+        $state.backendOwned = $true
+        $state.backendStdOut = $oldState.backendStdOut
+        $state.backendStdErr = $oldState.backendStdErr
+    }
+
+    if (
+        $oldState.frontendOwned `
+        -and (Test-ProcessRunning $oldState.frontendPid)
+    ) {
+        $state.frontendPid = [int]$oldState.frontendPid
+        $state.frontendOwned = $true
+        $state.frontendStdOut = $oldState.frontendStdOut
+        $state.frontendStdErr = $oldState.frontendStdErr
+    }
+
+    if (
+        $oldState.schedulerOwned `
+        -and (Test-ProcessRunning $oldState.schedulerPid)
+    ) {
+        $state.schedulerPid = [int]$oldState.schedulerPid
+        $state.schedulerOwned = $true
+        $state.schedulerStdOut = $oldState.schedulerStdOut
+        $state.schedulerStdErr = $oldState.schedulerStdErr
+    }
+}
+
+Save-State $state
 
 Write-Host ""
 Write-Host "BLACK SEA ECO MONITOR" -ForegroundColor Green
-Write-Host "Unified local launcher" -ForegroundColor DarkGray
+Write-Host "Unified local launcher v2" -ForegroundColor DarkGray
 
 # ------------------------------------------------------------
 # Backend
@@ -156,12 +266,17 @@ Write-Host "Unified local launcher" -ForegroundColor DarkGray
 Write-Step "Checking FastAPI backend"
 
 if (Test-Http -Url $BackendUrl) {
-    Write-Host "FastAPI is already running on 127.0.0.1:8000" -ForegroundColor Green
+    if ($state.backendOwned) {
+        Write-Host "FastAPI is already running (launcher-owned, PID $($state.backendPid))." -ForegroundColor Green
+    }
+    else {
+        Write-Host "FastAPI is already running on 127.0.0.1:8000 (external/manual)." -ForegroundColor Green
+    }
 }
 else {
     Write-Host "Starting FastAPI..." -ForegroundColor Gray
 
-    $backend = Start-MonitorProcess `
+    $started = Start-MonitorProcess `
         -FilePath $PythonExe `
         -Arguments @(
             "-m",
@@ -173,14 +288,16 @@ else {
             "8000"
         ) `
         -WorkingDirectory $RepoRoot `
-        -StdOut $BackendOut `
-        -StdErr $BackendErr
+        -Name "backend"
 
-    $state.backendPid = $backend.Id
+    $state.backendPid = $started.Process.Id
     $state.backendOwned = $true
+    $state.backendStdOut = $started.StdOut
+    $state.backendStdErr = $started.StdErr
+    Save-State $state
 
     if (-not (Wait-ForHttp -Url $BackendUrl -TimeoutSec 30)) {
-        Show-LogTail -Path $BackendErr
+        Show-LogTail -Path $state.backendStdErr
         throw "FastAPI did not become ready within 30 seconds."
     }
 
@@ -194,12 +311,17 @@ else {
 Write-Step "Checking web frontend"
 
 if (Test-Http -Url $FrontendUrl) {
-    Write-Host "Frontend is already running on 127.0.0.1:5173" -ForegroundColor Green
+    if ($state.frontendOwned) {
+        Write-Host "Frontend is already running (launcher-owned, PID $($state.frontendPid))." -ForegroundColor Green
+    }
+    else {
+        Write-Host "Frontend is already running on 127.0.0.1:5173 (external/manual)." -ForegroundColor Green
+    }
 }
 else {
     Write-Host "Starting Vite frontend..." -ForegroundColor Gray
 
-    $frontend = Start-MonitorProcess `
+    $started = Start-MonitorProcess `
         -FilePath $npmCommand.Source `
         -Arguments @(
             "run",
@@ -211,14 +333,16 @@ else {
             "5173"
         ) `
         -WorkingDirectory $FrontendDir `
-        -StdOut $FrontendOut `
-        -StdErr $FrontendErr
+        -Name "frontend"
 
-    $state.frontendPid = $frontend.Id
+    $state.frontendPid = $started.Process.Id
     $state.frontendOwned = $true
+    $state.frontendStdOut = $started.StdOut
+    $state.frontendStdErr = $started.StdErr
+    Save-State $state
 
     if (-not (Wait-ForHttp -Url $FrontendUrl -TimeoutSec 30)) {
-        Show-LogTail -Path $FrontendErr
+        Show-LogTail -Path $state.frontendStdErr
         throw "Frontend did not become ready within 30 seconds."
     }
 
@@ -238,48 +362,64 @@ elseif (-not (Test-Http -Url $OllamaUrl -TimeoutSec 2)) {
     Write-Host "Ollama is not running. Scheduler will not start." -ForegroundColor Yellow
     Write-Host "The map still works with already stored events." -ForegroundColor DarkGray
 }
+elseif (
+    $state.schedulerOwned `
+    -and (Test-ProcessRunning $state.schedulerPid)
+) {
+    Write-Host "Scheduler is already running (launcher-owned, PID $($state.schedulerPid))." -ForegroundColor Green
+}
 else {
-    Write-Host "Ollama detected. Starting News Agent scheduler..." -ForegroundColor Gray
+    # If the state file was lost, still avoid creating a duplicate scheduler.
+    $manualSchedulerPid = Find-ProcessByCommandLine `
+        "agents\.news_agent\.scheduler"
 
-    $scheduler = Start-MonitorProcess `
-        -FilePath $PythonExe `
-        -Arguments @(
-            "-m",
-            "agents.news_agent.scheduler"
-        ) `
-        -WorkingDirectory $RepoRoot `
-        -StdOut $SchedulerOut `
-        -StdErr $SchedulerErr
-
-    $state.schedulerPid = $scheduler.Id
-    $state.schedulerOwned = $true
-
-    Start-Sleep -Seconds 1
-
-    if ($scheduler.HasExited) {
-        Show-LogTail -Path $SchedulerErr
-        Write-Host "Scheduler exited early. Backend and frontend remain available." -ForegroundColor Yellow
+    if ($manualSchedulerPid) {
+        Write-Host "Scheduler is already running (external/manual, PID $manualSchedulerPid)." -ForegroundColor Green
         $state.schedulerPid = $null
         $state.schedulerOwned = $false
+        Save-State $state
     }
     else {
-        Write-Host "Scheduler started (PID $($scheduler.Id))." -ForegroundColor Green
+        Write-Host "Ollama detected. Starting News Agent scheduler..." -ForegroundColor Gray
+
+        $started = Start-MonitorProcess `
+            -FilePath $PythonExe `
+            -Arguments @(
+                "-m",
+                "agents.news_agent.scheduler"
+            ) `
+            -WorkingDirectory $RepoRoot `
+            -Name "scheduler"
+
+        $state.schedulerPid = $started.Process.Id
+        $state.schedulerOwned = $true
+        $state.schedulerStdOut = $started.StdOut
+        $state.schedulerStdErr = $started.StdErr
+        Save-State $state
+
+        Start-Sleep -Seconds 1
+
+        if ($started.Process.HasExited) {
+            Show-LogTail -Path $state.schedulerStdErr
+
+            Write-Host "Scheduler exited early. Backend and frontend remain available." -ForegroundColor Yellow
+
+            $state.schedulerPid = $null
+            $state.schedulerOwned = $false
+            Save-State $state
+        }
+        else {
+            Write-Host "Scheduler started (PID $($started.Process.Id))." -ForegroundColor Green
+        }
     }
 }
 
 # ------------------------------------------------------------
-# Save launcher-owned PIDs
+# Finish
 # ------------------------------------------------------------
 
-$state |
-    ConvertTo-Json |
-    Set-Content `
-        -Path $StateFile `
-        -Encoding UTF8
-
-# ------------------------------------------------------------
-# Open browser
-# ------------------------------------------------------------
+$state.startedAt = (Get-Date).ToString("o")
+Save-State $state
 
 Write-Step "Black Sea Eco Monitor is ready"
 
@@ -287,7 +427,8 @@ Write-Host "Web:       $FrontendUrl" -ForegroundColor Green
 Write-Host "API docs:  http://127.0.0.1:8000/docs" -ForegroundColor Green
 Write-Host ""
 Write-Host "Logs: $RuntimeDir" -ForegroundColor DarkGray
-Write-Host "Use STOP_MONITOR.cmd to stop processes launched by this script." -ForegroundColor DarkGray
+Write-Host "START_MONITOR.cmd can now be run repeatedly without starting duplicate services." -ForegroundColor DarkGray
+Write-Host "Use STOP_MONITOR.cmd to stop launcher-owned processes." -ForegroundColor DarkGray
 
 if (-not $NoBrowser) {
     Start-Process $FrontendUrl

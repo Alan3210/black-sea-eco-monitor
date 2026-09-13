@@ -16,7 +16,8 @@ if (-not (Test-Path $StateFile)) {
 }
 
 try {
-    $state = Get-Content $StateFile -Raw | ConvertFrom-Json
+    $state = Get-Content $StateFile -Raw |
+        ConvertFrom-Json
 }
 catch {
     Write-Host "Could not read launcher state file." -ForegroundColor Red
@@ -25,27 +26,31 @@ catch {
 
 function Stop-ProcessTree {
     param(
-        [Nullable[int]]$PidValue,
+        [object]$PidValue,
         [bool]$Owned,
         [string]$Name
     )
 
     if (-not $Owned -or -not $PidValue) {
-        Write-Host "$Name: not launcher-owned; leaving it alone." -ForegroundColor DarkGray
+        Write-Host "${Name}: not launcher-owned; leaving it alone." -ForegroundColor DarkGray
         return
     }
 
-    $process = Get-Process -Id $PidValue -ErrorAction SilentlyContinue
+    $pidInt = [int]$PidValue
+
+    $process = Get-Process `
+        -Id $pidInt `
+        -ErrorAction SilentlyContinue
 
     if (-not $process) {
-        Write-Host "$Name: already stopped." -ForegroundColor DarkGray
+        Write-Host "${Name}: already stopped." -ForegroundColor DarkGray
         return
     }
 
-    Write-Host "Stopping $Name (PID $PidValue)..." -ForegroundColor Gray
+    Write-Host "Stopping $Name (PID $pidInt)..." -ForegroundColor Gray
 
     & taskkill.exe `
-        /PID $PidValue `
+        /PID $pidInt `
         /T `
         /F `
         *> $null
@@ -73,7 +78,10 @@ Stop-ProcessTree `
     -Owned ([bool]$state.backendOwned) `
     -Name "FastAPI"
 
-Remove-Item $StateFile -Force -ErrorAction SilentlyContinue
+Remove-Item `
+    $StateFile `
+    -Force `
+    -ErrorAction SilentlyContinue
 
 Write-Host ""
 Write-Host "Done." -ForegroundColor Green
