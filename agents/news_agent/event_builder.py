@@ -8,6 +8,10 @@ from agents.news_agent.classification import (
     NewsClassification,
 )
 
+from agents.news_agent.coordinate_resolver import (
+    resolve_coordinates,
+)
+
 from backend.models.event import (
     EnvironmentalEvent,
     Location,
@@ -35,6 +39,28 @@ def estimate_severity(
 
 
     return EventSeverity.low
+
+
+
+def build_event_location(
+    location_name: str | None,
+) -> Location:
+
+    coordinates = resolve_coordinates(
+        location_name
+    )
+
+    if coordinates is None:
+
+        return Location(
+            latitude=0.0,
+            longitude=0.0,
+        )
+
+    return Location(
+        latitude=coordinates.latitude,
+        longitude=coordinates.longitude,
+    )
 
 
 
@@ -80,14 +106,8 @@ def build_environmental_event(
 
         category=classification.category,
 
-        location=Location(
-
-            # TODO:
-            # replace with Location Resolver
-
-            latitude=0.0,
-
-            longitude=0.0
+        location=build_event_location(
+            classification.location_name
         ),
 
         timestamp=datetime.now(

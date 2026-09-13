@@ -91,6 +91,31 @@ class EventStore:
                 )
             """)
 
+            cursor.execute(
+                "PRAGMA table_info(events)"
+            )
+
+            event_columns = {
+                row[1]
+                for row in cursor.fetchall()
+            }
+
+            if "latitude" not in event_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE events
+                    ADD COLUMN latitude REAL
+                    """
+                )
+
+            if "longitude" not in event_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE events
+                    ADD COLUMN longitude REAL
+                    """
+                )
+
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS event_evidence (
                     id TEXT PRIMARY KEY,
@@ -162,6 +187,8 @@ class EventStore:
         status: str = "detected",
         severity: str = "medium",
         confidence: float = 0.0,
+        latitude: float | None = None,
+        longitude: float | None = None,
     ):
         now = datetime.now(timezone.utc).isoformat()
         event_id = "evt_" + str(uuid4())
@@ -172,17 +199,105 @@ class EventStore:
                     id, category, location_name, primary_title,
                     status, severity, confidence,
                     first_seen, last_seen,
-                    created_at, updated_at
+                    created_at, updated_at,
+                    latitude, longitude
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 event_id, category, location_name, primary_title,
                 status, severity, confidence,
-                now, now, now, now
+                now, now, now, now,
+                latitude, longitude
             ))
             connection.commit()
 
         return event_id
+
+    def get_event_coordinates(
+        self,
+        event_id,
+    ):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                SELECT latitude, longitude
+                FROM events
+                WHERE id = ?
+                """,
+                (event_id,),
+            )
+
+            row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        return row[0], row[1]
+
+    def set_event_coordinates(
+        self,
+        *,
+        event_id,
+        latitude,
+        longitude,
+        overwrite=False,
+    ):
+        if (
+            latitude is None
+            or longitude is None
+        ):
+            return False
+
+        now = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            if overwrite:
+                cursor.execute(
+                    """
+                    UPDATE events
+                    SET latitude = ?,
+                        longitude = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        latitude,
+                        longitude,
+                        now,
+                        event_id,
+                    ),
+                )
+            else:
+                cursor.execute(
+                    """
+                    UPDATE events
+                    SET latitude = ?,
+                        longitude = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                      AND (
+                          latitude IS NULL
+                          OR longitude IS NULL
+                      )
+                    """,
+                    (
+                        latitude,
+                        longitude,
+                        now,
+                        event_id,
+                    ),
+                )
+
+            changed = cursor.rowcount > 0
+            connection.commit()
+
+        return changed
 
     def get_candidate_events(self, *, category, location_name):
         with self._connect() as connection:

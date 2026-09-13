@@ -1,6 +1,9 @@
 from agents.news_agent.location_resolver import (
     normalize_location_name,
 )
+from agents.news_agent.coordinate_resolver import (
+    resolve_coordinates,
+)
 from agents.news_agent.oil_spill_evidence_guard import (
     apply_oil_spill_evidence_guard,
 )
@@ -478,6 +481,8 @@ def main():
                         )
                     )
 
+                created_new_event = False
+
                 if existing_event_id is None:
 
                     existing_event_id = (
@@ -494,8 +499,26 @@ def main():
                             confidence=(
                                 normalized_result.confidence
                             ),
+                            latitude=(
+                                event.location.latitude
+                                if not (
+                                    event.location.latitude == 0.0
+                                    and event.location.longitude == 0.0
+                                )
+                                else None
+                            ),
+                            longitude=(
+                                event.location.longitude
+                                if not (
+                                    event.location.latitude == 0.0
+                                    and event.location.longitude == 0.0
+                                )
+                                else None
+                            ),
                         )
                     )
+
+                    created_new_event = True
 
                     print(
                         "  NEW EVENT CREATED"
@@ -513,6 +536,16 @@ def main():
                     print(
                         "  EXISTING EVENT FOUND "
                         "BY EVENT MATCHER"
+                    )
+
+                if not (
+                    event.location.latitude == 0.0
+                    and event.location.longitude == 0.0
+                ):
+                    event_store.set_event_coordinates(
+                        event_id=existing_event_id,
+                        latitude=event.location.latitude,
+                        longitude=event.location.longitude,
                     )
 
                 existing_evidence_id = (
@@ -649,6 +682,23 @@ def main():
                         )
 
                     else:
+
+                        follow_up_coordinates = (
+                            resolve_coordinates(
+                                normalized_result.location_name
+                            )
+                        )
+
+                        if follow_up_coordinates is not None:
+                            event_store.set_event_coordinates(
+                                event_id=existing_event_id,
+                                latitude=(
+                                    follow_up_coordinates.latitude
+                                ),
+                                longitude=(
+                                    follow_up_coordinates.longitude
+                                ),
+                            )
 
                         existing_evidence_id = (
                             event_store.find_existing_evidence_id(
