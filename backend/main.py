@@ -3,6 +3,9 @@ from fastapi import FastAPI
 from backend.api.evidence import router as evidence_router
 
 from backend.api.events import router as events_router
+from backend.api.monitor_events import (
+    router as monitor_events_router,
+)
 
 from backend.database.database import engine, Base
 from backend.database import models
@@ -29,6 +32,12 @@ app.include_router(
 app.include_router(
     evidence_router,
     prefix="/events"
+)
+
+app.include_router(
+    monitor_events_router,
+    prefix="/monitor/events",
+    tags=["monitor"],
 )
 
 @app.get("/")

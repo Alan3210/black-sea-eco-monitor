@@ -213,6 +213,155 @@ class EventStore:
 
         return event_id
 
+    def list_event_records(self):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                SELECT
+                    e.id,
+                    e.category,
+                    e.location_name,
+                    e.primary_title,
+                    e.status,
+                    e.severity,
+                    e.confidence,
+                    e.first_seen,
+                    e.last_seen,
+                    e.created_at,
+                    e.updated_at,
+                    e.latitude,
+                    e.longitude,
+                    (
+                        SELECT COUNT(*)
+                        FROM event_evidence AS ev
+                        WHERE ev.event_id = e.id
+                    ) AS evidence_count
+                FROM events AS e
+                ORDER BY
+                    e.updated_at DESC,
+                    e.created_at DESC
+                """
+            )
+
+            rows = cursor.fetchall()
+
+        return [
+            self._event_row_to_record(
+                row
+            )
+            for row in rows
+        ]
+
+    def get_event_record(
+        self,
+        event_id,
+    ):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                SELECT
+                    e.id,
+                    e.category,
+                    e.location_name,
+                    e.primary_title,
+                    e.status,
+                    e.severity,
+                    e.confidence,
+                    e.first_seen,
+                    e.last_seen,
+                    e.created_at,
+                    e.updated_at,
+                    e.latitude,
+                    e.longitude,
+                    (
+                        SELECT COUNT(*)
+                        FROM event_evidence AS ev
+                        WHERE ev.event_id = e.id
+                    ) AS evidence_count
+                FROM events AS e
+                WHERE e.id = ?
+                LIMIT 1
+                """,
+                (event_id,),
+            )
+
+            row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        return self._event_row_to_record(
+            row
+        )
+
+    @staticmethod
+    def _event_row_to_record(row):
+        return {
+            "id": row[0],
+            "category": row[1],
+            "location": {
+                "name": row[2],
+                "latitude": row[11],
+                "longitude": row[12],
+            },
+            "primary_title": row[3],
+            "status": row[4],
+            "severity": row[5],
+            "confidence": row[6],
+            "first_seen": row[7],
+            "last_seen": row[8],
+            "created_at": row[9],
+            "updated_at": row[10],
+            "evidence_count": row[13],
+        }
+
+    def get_event_evidence_records(
+        self,
+        event_id,
+    ):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    event_id,
+                    source,
+                    title,
+                    url,
+                    published_at,
+                    confidence,
+                    reason,
+                    created_at
+                FROM event_evidence
+                WHERE event_id = ?
+                ORDER BY created_at ASC
+                """,
+                (event_id,),
+            )
+
+            rows = cursor.fetchall()
+
+        return [
+            {
+                "id": row[0],
+                "event_id": row[1],
+                "source": row[2],
+                "title": row[3],
+                "url": row[4],
+                "published_at": row[5],
+                "confidence": row[6],
+                "reason": row[7],
+                "created_at": row[8],
+            }
+            for row in rows
+        ]
+
     def get_event_coordinates(
         self,
         event_id,

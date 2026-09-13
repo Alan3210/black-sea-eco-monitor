@@ -37,8 +37,8 @@ from agents.news_agent.incident_evidence_guard import (
 from agents.news_agent.lifecycle_guard import (
     apply_lifecycle_guard,
 )
-from agents.news_agent.llm_classifier import (
-    classify_news_with_llm,
+from agents.news_agent.llm_resilience import (
+    classify_news_with_retry,
 )
 from agents.news_agent.rule_classifier import (
     classify_news_item,
@@ -316,7 +316,7 @@ def main():
 
         try:
 
-            llm_result = classify_news_with_llm(
+            llm_result = classify_news_with_retry(
                 item
             )
 
