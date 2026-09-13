@@ -43,12 +43,6 @@ from agents.news_agent.llm_resilience import (
 from agents.news_agent.rule_classifier import (
     classify_news_item,
 )
-from agents.news_agent.event_correlation import (
-    EventCandidate,
-    cluster_event_candidates,
-)
-
-
 BATCH_LIMIT = None
 
 
@@ -160,6 +154,107 @@ def apply_event_lifecycle(
             f"  History ID: "
             f"{history_id}"
         )
+
+
+
+def print_event_store_summary(
+    event_store,
+):
+    print()
+    print("=" * 80)
+    print()
+    print("EVENT STORE SUMMARY")
+
+    events = event_store.list_event_records()
+
+    if not events:
+        print()
+        print("No persisted events.")
+        return
+
+    print()
+    print(
+        f"Persisted events: {len(events)}"
+    )
+
+    for number, event in enumerate(
+        events,
+        start=1,
+    ):
+        location = (
+            event.get("location")
+            or {}
+        )
+
+        latitude = location.get(
+            "latitude"
+        )
+
+        longitude = location.get(
+            "longitude"
+        )
+
+        print()
+        print(
+            f"Event #{number}"
+        )
+
+        print(
+            f"  ID: {event.get('id')}"
+        )
+
+        print(
+            f"  Category: "
+            f"{event.get('category')}"
+        )
+
+        print(
+            f"  Location: "
+            f"{location.get('name')}"
+        )
+
+        print(
+            f"  Status: "
+            f"{event.get('status')}"
+        )
+
+        print(
+            f"  Severity: "
+            f"{event.get('severity')}"
+        )
+
+        print(
+            f"  Confidence: "
+            f"{event.get('confidence')}"
+        )
+
+        if (
+            latitude is not None
+            and longitude is not None
+        ):
+            print(
+                "  Coordinates: "
+                f"{latitude}, {longitude}"
+            )
+        else:
+            print(
+                "  Coordinates: unknown"
+            )
+
+        print(
+            f"  Evidence count: "
+            f"{event.get('evidence_count', 0)}"
+        )
+
+        primary_title = event.get(
+            "primary_title"
+        )
+
+        if primary_title:
+            print(
+                f"  Primary title: "
+                f"{primary_title}"
+            )
 
 
 def main():
@@ -281,8 +376,6 @@ def main():
     print()
     print("=" * 80)
     print()
-
-    event_candidates = []
 
     for index, item in enumerate(
         selected_candidates,
@@ -435,13 +528,6 @@ def main():
                 print(
                     event.model_dump_json(
                         indent=2
-                    )
-                )
-
-                event_candidates.append(
-                    EventCandidate(
-                        item=item,
-                        classification=normalized_result,
                     )
                 )
 
@@ -778,60 +864,9 @@ def main():
         print("-" * 80)
         print()
 
-    # --------------------------------------------------
-    # Event Correlation
-    # --------------------------------------------------
-
-    print()
-    print("=" * 80)
-    print()
-    print("EVENT CORRELATION")
-
-    if event_candidates:
-
-        clusters = cluster_event_candidates(
-            event_candidates
-        )
-
-        for number, cluster in enumerate(
-            clusters,
-            start=1,
-        ):
-
-            first = cluster[0].classification
-
-            print()
-            print(
-                f"Cluster #{number}"
-            )
-
-            print(
-                f"  Category: "
-                f"{first.category}"
-            )
-
-            print(
-                f"  Location: "
-                f"{first.location_name}"
-            )
-
-            print(
-                f"  Evidence count: "
-                f"{len(cluster)}"
-            )
-
-            for evidence in cluster:
-
-                print(
-                    f"    - {evidence.item.source}: "
-                    f"{evidence.item.title}"
-                )
-
-    else:
-
-        print(
-            "No created events to correlate."
-        )
+    print_event_store_summary(
+        event_store
+    )
 
 
 if __name__ == "__main__":
