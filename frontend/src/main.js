@@ -9,10 +9,19 @@ import {
 } from './events.js';
 
 import {
-  DEFAULT_CATEGORIES,
-  DEFAULT_STATUSES,
   filterEvents,
 } from './filters.js';
+
+import {
+  eventDetailsViewModel,
+  formatEventDate,
+  safeExternalHttpUrl,
+} from './eventDetails.js';
+
+import {
+  findGroupForEvent,
+  groupCoLocatedEvents,
+} from './coLocatedEvents.js';
 
 const REFRESH_INTERVAL_MS = 60_000;
 
@@ -21,6 +30,10 @@ const connectionLabel = document.getElementById('connection-label');
 const updateLabel = document.getElementById('update-label');
 const eventCount = document.getElementById('event-count');
 const resetFiltersButton = document.getElementById('reset-filters');
+
+const eventPanel = document.getElementById('event-panel');
+const eventPanelContent = document.getElementById('event-panel-content');
+const closeEventPanelButton = document.getElementById('close-event-panel');
 
 const statusInputs = [
   ...document.querySelectorAll('input[data-status]'),
@@ -35,10 +48,18 @@ const timeInputs = [
 ];
 
 const eventsById = new Map();
+const evidenceCache = new Map();
+const evidenceRequests = new Map();
 
 let allEvents = [];
 let visibleEvents = [];
+let visibleGroups = [];
+let groupMarkers = [];
 let lastSuccessfulUpdate = null;
+
+let selectedEventId = null;
+let selectedGroupId = null;
+let panelRenderToken = 0;
 
 const map = new maplibregl.Map({
   container: 'map',
@@ -91,20 +112,6 @@ function formatClock(date) {
   });
 }
 
-function formatDate(value) {
-  if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? String(value)
-    : date.toLocaleString();
-}
-
-function confidenceLabel(value) {
-  return Number.isFinite(value)
-    ? `${Math.round(value * 100)}%`
-    : '—';
-}
-
 function readFilterState() {
   const statuses = statusInputs
     .filter((input) => input.checked)
@@ -134,21 +141,184 @@ function updateEventCount() {
     `${visibleEvents.length} of ${allEvents.length} events`;
 }
 
+function getVisibleGroup(groupId) {
+  return visibleGroups.find(
+    (group) => group.id === groupId,
+  ) ?? null;
+}
+
+function selectedEventIsVisible() {
+  if (!selectedEventId) return false;
+
+  return visibleEvents.some(
+    (event) => event.id === selectedEventId,
+  );
+}
+
+function updateSelectedCircle() {
+  if (!map.getLayer('monitor-events-selected')) return;
+
+  map.setFilter(
+    'monitor-events-selected',
+    [
+      '==',
+      ['get', 'id'],
+      selectedEventId || '__none__',
+    ],
+  );
+}
+
+function updateSelectedGroupMarker() {
+  for (const item of groupMarkers) {
+    item.element.classList.toggle(
+      'colocated-marker--selected',
+      item.groupId === selectedGroupId,
+    );
+  }
+}
+
+function clearGroupMarkers() {
+  for (const item of groupMarkers) {
+    item.marker.remove();
+  }
+
+  groupMarkers = [];
+}
+
+function createGroupMarker(group) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'colocated-marker';
+  button.setAttribute(
+    'aria-label',
+    `${group.count} incidents at ${group.locationName}`,
+  );
+
+  const count = document.createElement('span');
+  count.className = 'colocated-marker__count';
+  count.textContent = String(group.count);
+
+  const caption = document.createElement('span');
+  caption.className = 'colocated-marker__caption';
+  caption.textContent = 'INCIDENTS';
+
+  button.append(count, caption);
+
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    selectGroup(group);
+  });
+
+  const marker = new maplibregl.Marker({
+    element: button,
+    anchor: 'center',
+  })
+    .setLngLat([
+      group.longitude,
+      group.latitude,
+    ])
+    .addTo(map);
+
+  return {
+    groupId: group.id,
+    marker,
+    element: button,
+  };
+}
+
+function syncGroupMarkers() {
+  clearGroupMarkers();
+
+  for (const group of visibleGroups) {
+    if (!group.isGroup) continue;
+
+    groupMarkers.push(
+      createGroupMarker(group),
+    );
+  }
+
+  updateSelectedGroupMarker();
+}
+
+function reconcileSelectionAfterFilters() {
+  if (selectedEventId) {
+    if (!selectedEventIsVisible()) {
+      clearSelection();
+      return;
+    }
+
+    const group = findGroupForEvent(
+      visibleGroups,
+      selectedEventId,
+    );
+
+    selectedGroupId = group?.isGroup
+      ? group.id
+      : null;
+
+    return;
+  }
+
+  if (
+    selectedGroupId
+    && !getVisibleGroup(selectedGroupId)?.isGroup
+  ) {
+    clearSelection();
+  }
+}
+
+function refreshSelectedPanel() {
+  if (selectedEventId && selectedEventIsVisible()) {
+    const event = eventsById.get(selectedEventId);
+
+    if (event) {
+      renderEventPanel(
+        event,
+        selectedGroupId,
+      );
+    }
+
+    return;
+  }
+
+  if (selectedGroupId) {
+    const group = getVisibleGroup(selectedGroupId);
+
+    if (group?.isGroup) {
+      renderGroupPanel(group);
+    }
+  }
+}
+
 function applyFilters() {
   visibleEvents = filterEvents(
     allEvents,
     readFilterState(),
   );
 
+  visibleGroups = groupCoLocatedEvents(
+    visibleEvents,
+  );
+
+  reconcileSelectionAfterFilters();
+
+  const singleEvents = visibleGroups
+    .filter((group) => !group.isGroup)
+    .map((group) => group.events[0]);
+
   const source = map.getSource('monitor-events');
 
   if (source) {
     source.setData(
-      eventsToFeatureCollection(visibleEvents),
+      eventsToFeatureCollection(singleEvents),
     );
   }
 
+  syncGroupMarkers();
+  updateSelectedCircle();
   updateEventCount();
+  refreshSelectedPanel();
 }
 
 function resetFilters() {
@@ -172,126 +342,490 @@ for (const input of [
 
 resetFiltersButton.addEventListener('click', resetFilters);
 
-function makeTextRow(label, value) {
-  const row = document.createElement('div');
-  row.className = 'popup-row';
+function makeElement(tag, className, text) {
+  const element = document.createElement(tag);
 
-  const key = document.createElement('span');
-  key.className = 'popup-key';
-  key.textContent = label;
+  if (className) {
+    element.className = className;
+  }
 
-  const val = document.createElement('span');
-  val.className = 'popup-value';
-  val.textContent = value;
+  if (text !== undefined) {
+    element.textContent = text;
+  }
 
-  row.append(key, val);
-  return row;
+  return element;
 }
 
-function makeEvidenceSection(event) {
-  const section = document.createElement('section');
-  section.className = 'evidence-section';
+function makeMetric(label, value) {
+  const metric = makeElement('div', 'detail-metric');
+  const key = makeElement('div', 'detail-metric__label', label);
+  const val = makeElement('div', 'detail-metric__value', value);
 
-  const heading = document.createElement('div');
-  heading.className = 'evidence-heading';
-  heading.textContent = `EVIDENCE (${event.evidenceCount})`;
+  metric.append(key, val);
+  return metric;
+}
 
-  const body = document.createElement('div');
-  body.className = 'evidence-list';
-  body.textContent = 'Loading sources…';
+function makeStatusPill(label, kind) {
+  return makeElement(
+    'span',
+    `status-pill status-pill--${kind}`,
+    label,
+  );
+}
 
-  section.append(heading, body);
+function renderEvidenceRows(container, rows) {
+  container.replaceChildren();
 
-  fetchEventEvidence(event.id)
+  if (!rows.length) {
+    container.append(
+      makeElement(
+        'div',
+        'evidence-empty',
+        'No evidence records.',
+      ),
+    );
+    return;
+  }
+
+  for (const evidence of rows) {
+    const item = makeElement('article', 'detail-evidence');
+
+    const title = makeElement(
+      'div',
+      'detail-evidence__title',
+      evidence.title || 'Untitled source',
+    );
+
+    const meta = makeElement(
+      'div',
+      'detail-evidence__meta',
+      [
+        evidence.source || 'Unknown source',
+        formatEventDate(evidence.published_at),
+      ].join(' · '),
+    );
+
+    item.append(title, meta);
+
+    const safeUrl = safeExternalHttpUrl(evidence.url);
+
+    if (safeUrl) {
+      const link = makeElement(
+        'a',
+        'detail-evidence__link',
+        'Open source ↗',
+      );
+
+      link.href = safeUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+
+      item.append(link);
+    }
+
+    container.append(item);
+  }
+}
+
+function loadEvidence(eventId) {
+  if (evidenceCache.has(eventId)) {
+    return Promise.resolve(
+      evidenceCache.get(eventId),
+    );
+  }
+
+  if (evidenceRequests.has(eventId)) {
+    return evidenceRequests.get(eventId);
+  }
+
+  const request = fetchEventEvidence(eventId)
     .then((rows) => {
-      body.replaceChildren();
+      evidenceCache.set(eventId, rows);
+      return rows;
+    })
+    .finally(() => {
+      evidenceRequests.delete(eventId);
+    });
 
-      if (!rows.length) {
-        body.textContent = 'No evidence records.';
+  evidenceRequests.set(eventId, request);
+  return request;
+}
+
+function makeBackToGroupButton(group) {
+  const button = makeElement(
+    'button',
+    'detail-back',
+    `← ${group.count} incidents at this point`,
+  );
+
+  button.type = 'button';
+
+  button.addEventListener('click', () => {
+    selectGroup(group);
+  });
+
+  return button;
+}
+
+function renderEventPanel(event, originGroupId = null) {
+  const token = ++panelRenderToken;
+  const vm = eventDetailsViewModel(event);
+
+  eventPanelContent.replaceChildren();
+
+  const originGroup = originGroupId
+    ? getVisibleGroup(originGroupId)
+    : null;
+
+  if (originGroup?.isGroup) {
+    eventPanelContent.append(
+      makeBackToGroupButton(originGroup),
+    );
+  }
+
+  const header = makeElement('div', 'detail-header');
+
+  const category = makeElement(
+    'div',
+    'detail-category',
+    vm.category,
+  );
+
+  category.style.setProperty(
+    '--event-color',
+    vm.color,
+  );
+
+  const location = makeElement(
+    'h2',
+    'detail-location',
+    vm.location,
+  );
+
+  const headline = makeElement(
+    'div',
+    'detail-headline',
+    vm.headline,
+  );
+
+  header.append(
+    category,
+    location,
+    headline,
+  );
+
+  const pills = makeElement(
+    'div',
+    'detail-pills',
+  );
+
+  pills.append(
+    makeStatusPill(
+      vm.status,
+      String(event.status || 'unknown').toLowerCase(),
+    ),
+    makeStatusPill(
+      vm.severity,
+      'severity',
+    ),
+  );
+
+  const metrics = makeElement(
+    'div',
+    'detail-metrics',
+  );
+
+  metrics.append(
+    makeMetric('CONFIDENCE', vm.confidence),
+    makeMetric('EVIDENCE', String(vm.evidenceCount)),
+    makeMetric('COORDINATES', vm.coordinates),
+    makeMetric('LAST SEEN', vm.lastSeen),
+  );
+
+  const timeline = makeElement(
+    'section',
+    'detail-section',
+  );
+
+  timeline.append(
+    makeElement(
+      'div',
+      'detail-section__title',
+      'TIMELINE',
+    ),
+  );
+
+  const timelineGrid = makeElement(
+    'div',
+    'detail-timeline',
+  );
+
+  timelineGrid.append(
+    makeMetric('FIRST SEEN', vm.firstSeen),
+    makeMetric('LATEST', vm.lastSeen),
+  );
+
+  timeline.append(timelineGrid);
+
+  const evidenceSection = makeElement(
+    'section',
+    'detail-section',
+  );
+
+  const evidenceHeading = makeElement(
+    'div',
+    'detail-section__title',
+    `EVIDENCE · ${vm.evidenceCount}`,
+  );
+
+  const evidenceList = makeElement(
+    'div',
+    'detail-evidence-list',
+  );
+
+  evidenceList.append(
+    makeElement(
+      'div',
+      'evidence-loading',
+      'Loading sources…',
+    ),
+  );
+
+  evidenceSection.append(
+    evidenceHeading,
+    evidenceList,
+  );
+
+  eventPanelContent.append(
+    header,
+    pills,
+    metrics,
+    timeline,
+    evidenceSection,
+  );
+
+  eventPanel.classList.add(
+    'event-panel--open',
+  );
+
+  eventPanel.setAttribute(
+    'aria-hidden',
+    'false',
+  );
+
+  loadEvidence(event.id)
+    .then((rows) => {
+      if (
+        token !== panelRenderToken
+        || selectedEventId !== event.id
+      ) {
         return;
       }
 
-      for (const evidence of rows) {
-        const item = document.createElement('article');
-        item.className = 'evidence-item';
-
-        const title = document.createElement('div');
-        title.className = 'evidence-title';
-        title.textContent =
-          evidence.title || 'Untitled source';
-
-        const meta = document.createElement('div');
-        meta.className = 'evidence-meta';
-        meta.textContent = [
-          evidence.source || 'Unknown source',
-          formatDate(evidence.published_at),
-        ].join(' · ');
-
-        item.append(title, meta);
-
-        if (evidence.url) {
-          const link = document.createElement('a');
-          link.href = evidence.url;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.textContent = 'Open source ↗';
-          item.append(link);
-        }
-
-        body.append(item);
-      }
+      renderEvidenceRows(
+        evidenceList,
+        rows,
+      );
     })
     .catch((error) => {
-      body.textContent =
-        `Evidence unavailable: ${error.message}`;
-    });
+      if (
+        token !== panelRenderToken
+        || selectedEventId !== event.id
+      ) {
+        return;
+      }
 
-  return section;
+      evidenceList.replaceChildren(
+        makeElement(
+          'div',
+          'evidence-error',
+          `Evidence unavailable: ${error.message}`,
+        ),
+      );
+    });
 }
 
-function buildPopupContent(event) {
-  const root = document.createElement('div');
-  root.className = 'event-popup';
+function makeGroupEventCard(event, group) {
+  const vm = eventDetailsViewModel(event);
 
-  const category = document.createElement('div');
-  category.className = 'popup-category';
-  category.textContent = event.categoryLabel;
+  const card = makeElement(
+    'button',
+    'group-event-card',
+  );
+
+  card.type = 'button';
+
+  const top = makeElement(
+    'div',
+    'group-event-card__top',
+  );
+
+  const category = makeElement(
+    'div',
+    'group-event-card__category',
+    vm.category,
+  );
+
   category.style.setProperty(
     '--event-color',
-    event.markerColor,
+    vm.color,
   );
 
-  const title = document.createElement('h2');
-  title.textContent = event.locationName;
-
-  const incidentTitle = document.createElement('div');
-  incidentTitle.className = 'incident-title';
-  incidentTitle.textContent =
-    event.primaryTitle || 'Environmental incident';
-
-  root.append(
-    category,
-    title,
-    incidentTitle,
-    makeTextRow('Status', event.status),
-    makeTextRow('Severity', event.severity),
-    makeTextRow(
-      'Confidence',
-      confidenceLabel(event.confidence),
-    ),
-    makeTextRow(
-      'Coordinates',
-      `${event.latitude.toFixed(4)}, ${event.longitude.toFixed(4)}`,
-    ),
-    makeTextRow(
-      'Updated',
-      formatDate(event.updatedAt || event.lastSeen),
-    ),
-    makeEvidenceSection(event),
+  const status = makeElement(
+    'span',
+    'group-event-card__status',
+    vm.status,
   );
 
-  return root;
+  top.append(category, status);
+
+  const title = makeElement(
+    'div',
+    'group-event-card__title',
+    vm.headline,
+  );
+
+  const meta = makeElement(
+    'div',
+    'group-event-card__meta',
+    `${vm.severity} severity · ${vm.confidence} confidence · ${vm.evidenceCount} evidence`,
+  );
+
+  card.append(top, title, meta);
+
+  card.addEventListener('click', () => {
+    selectEvent(event, group.id);
+  });
+
+  return card;
 }
+
+function renderGroupPanel(group) {
+  panelRenderToken += 1;
+  eventPanelContent.replaceChildren();
+
+  const header = makeElement(
+    'div',
+    'group-detail-header',
+  );
+
+  const kicker = makeElement(
+    'div',
+    'group-detail-kicker',
+    'CO-LOCATED INCIDENTS',
+  );
+
+  const location = makeElement(
+    'h2',
+    'detail-location',
+    group.locationName,
+  );
+
+  const summary = makeElement(
+    'div',
+    'detail-headline',
+    `${group.count} incidents share this canonical map point. Select one to inspect its evidence and lifecycle.`,
+  );
+
+  header.append(
+    kicker,
+    location,
+    summary,
+  );
+
+  const coordinate = makeElement(
+    'div',
+    'group-coordinate',
+    `${group.latitude.toFixed(5)}, ${group.longitude.toFixed(5)}`,
+  );
+
+  const list = makeElement(
+    'div',
+    'group-event-list',
+  );
+
+  for (const event of group.events) {
+    list.append(
+      makeGroupEventCard(
+        event,
+        group,
+      ),
+    );
+  }
+
+  eventPanelContent.append(
+    header,
+    coordinate,
+    list,
+  );
+
+  eventPanel.classList.add(
+    'event-panel--open',
+  );
+
+  eventPanel.setAttribute(
+    'aria-hidden',
+    'false',
+  );
+}
+
+function selectEvent(event, originGroupId = null) {
+  selectedEventId = event.id;
+  selectedGroupId = originGroupId;
+
+  updateSelectedCircle();
+  updateSelectedGroupMarker();
+
+  renderEventPanel(
+    event,
+    originGroupId,
+  );
+}
+
+function selectGroup(group) {
+  selectedEventId = null;
+  selectedGroupId = group.id;
+
+  updateSelectedCircle();
+  updateSelectedGroupMarker();
+
+  renderGroupPanel(group);
+}
+
+function clearSelection() {
+  selectedEventId = null;
+  selectedGroupId = null;
+  panelRenderToken += 1;
+
+  updateSelectedCircle();
+  updateSelectedGroupMarker();
+
+  eventPanel.classList.remove(
+    'event-panel--open',
+  );
+
+  eventPanel.setAttribute(
+    'aria-hidden',
+    'true',
+  );
+}
+
+closeEventPanelButton.addEventListener(
+  'click',
+  clearSelection,
+);
+
+document.addEventListener(
+  'keydown',
+  (event) => {
+    if (
+      event.key === 'Escape'
+      && (selectedEventId || selectedGroupId)
+    ) {
+      clearSelection();
+    }
+  },
+);
 
 function installEventLayer() {
   map.addSource('monitor-events', {
@@ -308,6 +842,31 @@ function installEventLayer() {
       'circle-color': ['get', 'markerColor'],
       'circle-opacity': 0.16,
       'circle-blur': 0.7,
+    },
+  });
+
+  map.addLayer({
+    id: 'monitor-events-selected',
+    type: 'circle',
+    source: 'monitor-events',
+    filter: [
+      '==',
+      ['get', 'id'],
+      '__none__',
+    ],
+    paint: {
+      'circle-radius': [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        3, 15,
+        8, 22,
+      ],
+      'circle-color': ['get', 'markerColor'],
+      'circle-opacity': 0.18,
+      'circle-stroke-width': 3,
+      'circle-stroke-color': '#ffffff',
+      'circle-blur': 0.18,
     },
   });
 
@@ -345,20 +904,7 @@ function installEventLayer() {
 
     if (!monitorEvent) return;
 
-    new maplibregl.Popup({
-      closeButton: true,
-      closeOnClick: true,
-      maxWidth: '410px',
-      offset: 14,
-    })
-      .setLngLat([
-        monitorEvent.longitude,
-        monitorEvent.latitude,
-      ])
-      .setDOMContent(
-        buildPopupContent(monitorEvent),
-      )
-      .addTo(map);
+    selectEvent(monitorEvent);
   });
 }
 
