@@ -13,6 +13,10 @@ from agents.news_agent.event_store import (
 from agents.news_agent.event_lifecycle import (
     detect_lifecycle_status,
 )
+from agents.news_agent.event_metadata import (
+    build_event_store_metadata,
+    enrich_existing_event_metadata,
+)
 
 from agents.news_agent.agent import NewsAgent
 from agents.news_agent.category_evidence_guard import (
@@ -36,6 +40,9 @@ from agents.news_agent.incident_evidence_guard import (
 )
 from agents.news_agent.lifecycle_guard import (
     apply_lifecycle_guard,
+)
+from agents.news_agent.legal_followup_guard import (
+    apply_legal_followup_guard,
 )
 from agents.news_agent.llm_resilience import (
     classify_news_with_retry,
@@ -69,6 +76,16 @@ def print_classification_result(
     )
 
     print(
+        f"  Location type: "
+        f"{getattr(result, 'location_type', None)}"
+    )
+
+    print(
+        f"  Location confidence: "
+        f"{getattr(result, 'location_confidence', None)}"
+    )
+
+    print(
         f"  Black Sea region: "
         f"{result.is_black_sea_region}"
     )
@@ -86,6 +103,11 @@ def print_classification_result(
     print(
         f"  Event date: "
         f"{result.event_date}"
+    )
+
+    print(
+        f"  Incident time: "
+        f"{getattr(result, 'incident_time', None)}"
     )
 
     print(
@@ -240,6 +262,41 @@ def print_event_store_summary(
             print(
                 "  Coordinates: unknown"
             )
+
+        print(
+            f"  Location type: "
+            f"{location.get('type')}"
+        )
+
+        print(
+            f"  Location confidence: "
+            f"{location.get('confidence')}"
+        )
+
+        print(
+            f"  Coordinate source: "
+            f"{location.get('source')}"
+        )
+
+        time_metadata = (
+            event.get("time")
+            or {}
+        )
+
+        print(
+            f"  Incident time: "
+            f"{time_metadata.get('incident_time')}"
+        )
+
+        print(
+            f"  Detection time: "
+            f"{time_metadata.get('detection_time')}"
+        )
+
+        print(
+            f"  Source time: "
+            f"{time_metadata.get('source_time')}"
+        )
 
         print(
             f"  Evidence count: "
@@ -476,12 +533,26 @@ def main():
 
             print()
 
+            legal_guarded_result = (
+                apply_legal_followup_guard(
+                    item,
+                    final_guarded_result,
+                )
+            )
+
+            print_classification_result(
+                "LEGAL FOLLOW-UP GUARD",
+                legal_guarded_result,
+            )
+
+            print()
+
             normalized_result = (
-                final_guarded_result.model_copy(
+                legal_guarded_result.model_copy(
                     update={
                         "location_name":
                         normalize_location_name(
-                            final_guarded_result.location_name
+                            legal_guarded_result.location_name
                         )
                     }
                 )
@@ -571,6 +642,21 @@ def main():
 
                 if existing_event_id is None:
 
+                    coordinates_resolved = not (
+                        event.location.latitude == 0.0
+                        and event.location.longitude == 0.0
+                    )
+
+                    event_metadata = (
+                        build_event_store_metadata(
+                            item=item,
+                            classification=normalized_result,
+                            coordinates_resolved=(
+                                coordinates_resolved
+                            ),
+                        )
+                    )
+
                     existing_event_id = (
                         event_store.create_event(
                             category=(
@@ -595,12 +681,10 @@ def main():
                             ),
                             longitude=(
                                 event.location.longitude
-                                if not (
-                                    event.location.latitude == 0.0
-                                    and event.location.longitude == 0.0
-                                )
+                                if coordinates_resolved
                                 else None
                             ),
+                            **event_metadata,
                         )
                     )
 
@@ -624,15 +708,27 @@ def main():
                         "BY EVENT MATCHER"
                     )
 
-                if not (
+                coordinates_resolved = not (
                     event.location.latitude == 0.0
                     and event.location.longitude == 0.0
-                ):
+                )
+
+                if coordinates_resolved:
                     event_store.set_event_coordinates(
                         event_id=existing_event_id,
                         latitude=event.location.latitude,
                         longitude=event.location.longitude,
                     )
+
+                enrich_existing_event_metadata(
+                    event_store=event_store,
+                    event_id=existing_event_id,
+                    item=item,
+                    classification=normalized_result,
+                    coordinates_resolved=(
+                        coordinates_resolved
+                    ),
+                )
 
                 existing_evidence_id = (
                     event_store.find_existing_evidence_id(
@@ -785,6 +881,17 @@ def main():
                                     follow_up_coordinates.longitude
                                 ),
                             )
+
+                        enrich_existing_event_metadata(
+                            event_store=event_store,
+                            event_id=existing_event_id,
+                            item=item,
+                            classification=normalized_result,
+                            coordinates_resolved=(
+                                follow_up_coordinates
+                                is not None
+                            ),
+                        )
 
                         existing_evidence_id = (
                             event_store.find_existing_evidence_id(

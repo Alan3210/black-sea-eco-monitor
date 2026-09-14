@@ -16,6 +16,19 @@ class NewsClassificationType(str, Enum):
     noise = "noise"
 
 
+class NewsLocationType(str, Enum):
+    city = "city"
+    settlement = "settlement"
+    district = "district"
+    street = "street"
+    facility = "facility"
+    protected_area = "protected_area"
+    coastal_area = "coastal_area"
+    water_body = "water_body"
+    region = "region"
+    other = "other"
+
+
 class NewsClassification(BaseModel):
 
     classification: NewsClassificationType
@@ -24,15 +37,25 @@ class NewsClassification(BaseModel):
 
     location_name: Optional[str] = None
 
+    location_type: Optional[NewsLocationType] = None
+
+    location_confidence: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+    )
+
     is_black_sea_region: Optional[bool] = None
 
     confidence: float = Field(
         ge=0.0,
-        le=1.0
+        le=1.0,
     )
 
     is_new_event: Optional[bool] = None
 
     event_date: Optional[str] = None
+
+    incident_time: Optional[str] = None
 
     reason: str

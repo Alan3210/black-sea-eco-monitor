@@ -116,6 +116,54 @@ class EventStore:
                     """
                 )
 
+            if "location_type" not in event_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE events
+                    ADD COLUMN location_type TEXT
+                    """
+                )
+
+            if "location_confidence" not in event_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE events
+                    ADD COLUMN location_confidence REAL
+                    """
+                )
+
+            if "coordinate_source" not in event_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE events
+                    ADD COLUMN coordinate_source TEXT
+                    """
+                )
+
+            if "incident_time" not in event_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE events
+                    ADD COLUMN incident_time TEXT
+                    """
+                )
+
+            if "detection_time" not in event_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE events
+                    ADD COLUMN detection_time TEXT
+                    """
+                )
+
+            if "source_time" not in event_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE events
+                    ADD COLUMN source_time TEXT
+                    """
+                )
+
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS event_evidence (
                     id TEXT PRIMARY KEY,
@@ -178,6 +226,34 @@ class EventStore:
 
             connection.commit()
 
+    @staticmethod
+    def _normalize_confidence(value):
+        if value is None:
+            return None
+
+        confidence = float(value)
+
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError(
+                "confidence must be between 0.0 and 1.0"
+            )
+
+        return confidence
+
+    @staticmethod
+    def _normalize_optional_datetime(value):
+        if value is None:
+            return None
+
+        parsed = parse_news_datetime(value)
+
+        if parsed is None:
+            raise ValueError(
+                f"Invalid datetime value: {value!r}"
+            )
+
+        return parsed.isoformat()
+
     def create_event(
         self,
         *,
@@ -189,9 +265,31 @@ class EventStore:
         confidence: float = 0.0,
         latitude: float | None = None,
         longitude: float | None = None,
+        location_type: str | None = None,
+        location_confidence: float | None = None,
+        coordinate_source: str | None = None,
+        incident_time=None,
+        detection_time=None,
+        source_time=None,
     ):
         now = datetime.now(timezone.utc).isoformat()
         event_id = "evt_" + str(uuid4())
+
+        location_confidence = (
+            self._normalize_confidence(
+                location_confidence
+            )
+        )
+
+        incident_time = self._normalize_optional_datetime(
+            incident_time
+        )
+        detection_time = self._normalize_optional_datetime(
+            detection_time
+        ) or now
+        source_time = self._normalize_optional_datetime(
+            source_time
+        )
 
         with self._connect() as connection:
             connection.execute("""
@@ -200,14 +298,23 @@ class EventStore:
                     status, severity, confidence,
                     first_seen, last_seen,
                     created_at, updated_at,
-                    latitude, longitude
+                    latitude, longitude,
+                    location_type, location_confidence,
+                    coordinate_source,
+                    incident_time, detection_time, source_time
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?
+                )
             """, (
                 event_id, category, location_name, primary_title,
                 status, severity, confidence,
                 now, now, now, now,
-                latitude, longitude
+                latitude, longitude,
+                location_type, location_confidence,
+                coordinate_source,
+                incident_time, detection_time, source_time
             ))
             connection.commit()
 
@@ -233,6 +340,12 @@ class EventStore:
                     e.updated_at,
                     e.latitude,
                     e.longitude,
+                    e.location_type,
+                    e.location_confidence,
+                    e.coordinate_source,
+                    e.incident_time,
+                    e.detection_time,
+                    e.source_time,
                     (
                         SELECT COUNT(*)
                         FROM event_evidence AS ev
@@ -277,6 +390,12 @@ class EventStore:
                     e.updated_at,
                     e.latitude,
                     e.longitude,
+                    e.location_type,
+                    e.location_confidence,
+                    e.coordinate_source,
+                    e.incident_time,
+                    e.detection_time,
+                    e.source_time,
                     (
                         SELECT COUNT(*)
                         FROM event_evidence AS ev
@@ -307,6 +426,14 @@ class EventStore:
                 "name": row[2],
                 "latitude": row[11],
                 "longitude": row[12],
+                "type": row[13],
+                "confidence": row[14],
+                "source": row[15],
+            },
+            "time": {
+                "incident_time": row[16],
+                "detection_time": row[17],
+                "source_time": row[18],
             },
             "primary_title": row[3],
             "status": row[4],
@@ -316,7 +443,7 @@ class EventStore:
             "last_seen": row[8],
             "created_at": row[9],
             "updated_at": row[10],
-            "evidence_count": row[13],
+            "evidence_count": row[19],
         }
 
     def get_event_evidence_records(
@@ -443,6 +570,144 @@ class EventStore:
                     ),
                 )
 
+            changed = cursor.rowcount > 0
+            connection.commit()
+
+        return changed
+
+    def set_event_location_metadata(
+        self,
+        *,
+        event_id,
+        location_type=None,
+        location_confidence=None,
+        coordinate_source=None,
+        overwrite=False,
+    ):
+        values = {
+            "location_type": location_type,
+            "location_confidence": (
+                self._normalize_confidence(
+                    location_confidence
+                )
+                if location_confidence is not None
+                else None
+            ),
+            "coordinate_source": coordinate_source,
+        }
+
+        return self._update_optional_event_fields(
+            event_id=event_id,
+            values=values,
+            overwrite=overwrite,
+        )
+
+    def set_event_time_metadata(
+        self,
+        *,
+        event_id,
+        incident_time=None,
+        detection_time=None,
+        source_time=None,
+        overwrite=False,
+    ):
+        values = {
+            "incident_time": (
+                self._normalize_optional_datetime(
+                    incident_time
+                )
+                if incident_time is not None
+                else None
+            ),
+            "detection_time": (
+                self._normalize_optional_datetime(
+                    detection_time
+                )
+                if detection_time is not None
+                else None
+            ),
+            "source_time": (
+                self._normalize_optional_datetime(
+                    source_time
+                )
+                if source_time is not None
+                else None
+            ),
+        }
+
+        return self._update_optional_event_fields(
+            event_id=event_id,
+            values=values,
+            overwrite=overwrite,
+        )
+
+    def _update_optional_event_fields(
+        self,
+        *,
+        event_id,
+        values,
+        overwrite,
+    ):
+        provided = {
+            column: value
+            for column, value in values.items()
+            if value is not None
+        }
+
+        if not provided:
+            return False
+
+        now = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        columns = list(provided)
+
+        if overwrite:
+            assignments = [
+                f"{column} = ?"
+                for column in columns
+            ]
+            where_extra = ""
+        else:
+            assignments = [
+                f"{column} = COALESCE({column}, ?)"
+                for column in columns
+            ]
+            null_checks = " OR ".join(
+                f"{column} IS NULL"
+                for column in columns
+            )
+            where_extra = (
+                f" AND ({null_checks})"
+            )
+
+        assignments.append(
+            "updated_at = ?"
+        )
+
+        parameters = [
+            provided[column]
+            for column in columns
+        ]
+        parameters.extend([
+            now,
+            event_id,
+        ])
+
+        sql = (
+            "UPDATE events SET "
+            + ", ".join(assignments)
+            + " WHERE id = ?"
+            + where_extra
+        )
+
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                sql,
+                parameters,
+            )
             changed = cursor.rowcount > 0
             connection.commit()
 

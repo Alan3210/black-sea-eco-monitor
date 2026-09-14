@@ -30,6 +30,12 @@ def monitor_api_client(
         confidence=0.8,
         latitude=44.7240,
         longitude=37.7691,
+        location_type="city",
+        location_confidence=0.72,
+        coordinate_source="canonical_database",
+        incident_time="2026-09-13T09:30:00Z",
+        detection_time="2026-09-13T10:00:00Z",
+        source_time="2026-09-13T10:15:00Z",
     )
 
     store.add_evidence(
@@ -38,7 +44,7 @@ def monitor_api_client(
         title="Test wildfire report",
         url="https://example.com/test",
         published_at=(
-            "2026-09-13T10:00:00+00:00"
+            "2026-09-13T10:15:00+00:00"
         ),
         confidence=0.8,
         reason="Test evidence.",
@@ -105,6 +111,51 @@ def test_monitor_event_by_id(
         data["location"]["name"]
         == "Novorossiysk"
     )
+
+
+def test_monitor_api_exposes_location_quality(
+    monitor_api_client,
+):
+    client, event_id = (
+        monitor_api_client
+    )
+
+    response = client.get(
+        f"/monitor/events/{event_id}"
+    )
+
+    assert response.status_code == 200
+
+    location = response.json()["location"]
+
+    assert location == {
+        "name": "Novorossiysk",
+        "latitude": 44.724,
+        "longitude": 37.7691,
+        "type": "city",
+        "confidence": 0.72,
+        "source": "canonical_database",
+    }
+
+
+def test_monitor_api_exposes_event_time_metadata(
+    monitor_api_client,
+):
+    client, event_id = (
+        monitor_api_client
+    )
+
+    response = client.get(
+        f"/monitor/events/{event_id}"
+    )
+
+    assert response.status_code == 200
+
+    assert response.json()["time"] == {
+        "incident_time": "2026-09-13T09:30:00+00:00",
+        "detection_time": "2026-09-13T10:00:00+00:00",
+        "source_time": "2026-09-13T10:15:00+00:00",
+    }
 
 
 def test_monitor_event_evidence(

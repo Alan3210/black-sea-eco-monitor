@@ -19,7 +19,6 @@ from agents.news_agent.rule_classifier import (
 
 logger = logging.getLogger(__name__)
 
-
 LLM_MAX_ATTEMPTS = 3
 LLM_RETRY_DELAY_SECONDS = 1.0
 MAX_REASON_LENGTH = 240
@@ -32,9 +31,9 @@ def _build_prompt(
     return f"""
 You are an environmental intelligence analyst monitoring the Black Sea region.
 
-Analyze only the information explicitly present in the supplied news item.
-Do not infer facts from the reputation of a city, military context, proximity
- to the sea, or what might usually happen in similar incidents.
+Analyze only information supported by the supplied news item.
+Do not invent facts from general knowledge, reputation of a place, military
+context, proximity to the sea, or what usually happens in similar incidents.
 
 TITLE:
 {item.title}
@@ -137,13 +136,50 @@ CATEGORY DISCIPLINE
 
 GEOGRAPHY
 
-- location_name must be the most specific location supported by the text.
-- Do not invent a district, street, facility or coordinates.
+location_name
+- Use the most specific place explicitly supported by the supplied item and
+  directly tied to the environmental incident.
+- Prefer a named facility, reserve, street, district, settlement or other
+  specific place over a broader city or region only when the text actually
+  establishes that specific place.
+- Do not invent a district, street, facility, protected area or coordinates.
+- If the place of the incident is not supported, use null.
+
+location_type
+- Use exactly one of:
+  city, settlement, district, street, facility, protected_area,
+  coastal_area, water_body, region, other.
+- facility: explicitly named industrial, energy, transport, port or similar
+  infrastructure where the incident occurs.
+- protected_area: reserve, national park, sanctuary or similar protected
+  natural territory.
+- water_body: sea, bay, river, lake or other named body of water when that is
+  the incident location.
+- coastal_area: beach, shoreline, coast or coastal zone when no more precise
+  supported type applies.
+- If location_name is null, location_type MUST also be null.
+
+location_confidence
+- Confidence that location_name correctly identifies where the incident itself
+  occurred, not confidence in the environmental classification.
+- Use 0.0 to 1.0.
+- High confidence requires an explicit connection between the incident and the
+  named place.
+- A broad city or region can be correct but should normally receive lower
+  location confidence than an explicitly named facility or protected area.
+- Do not increase confidence using outside knowledge.
+- If location_name is null, location_confidence MUST be null.
+
+COORDINATES
+
+- Do NOT generate latitude or longitude.
+- Do NOT guess coordinates from a place name.
+- Coordinate resolution is performed later by deterministic system code.
 
 BLACK SEA REGION
 
 Set is_black_sea_region=true only when the event itself occurs in or directly
- affects the Black Sea, Sea of Azov, or a relevant Black Sea coastal area.
+affects the Black Sea, Sea of Azov, or a relevant Black Sea coastal area.
 Examples include coastal Krasnodar Krai, Crimea, Sevastopol, Odesa region,
 Georgia's Black Sea coast, Turkey's Black Sea coast, Bulgaria and Romania.
 
@@ -167,10 +203,32 @@ EVENT_DATE
 
 - Date when the environmental incident itself occurred, YYYY-MM-DD.
 - Publication date is not automatically the event date.
+- Relative wording such as "today" or "yesterday" may be resolved only against
+  the supplied PUBLISHED timestamp.
 - Never invent a date. Use null when unsupported.
+
+INCIDENT_TIME
+
+- Exact or reasonably explicit time of the environmental incident itself.
+- Return an ISO 8601 value only when the supplied item supports time-of-day.
+- Relative clock wording may be resolved against PUBLISHED only when the
+  relationship is explicit.
+- Do not use publication time as incident_time merely because no incident time
+  is available.
+- If the article supports only a date but no time-of-day, use
+  incident_time=null and keep the date in event_date.
+- Never invent a time.
+
+SYSTEM-OWNED TIME FIELDS
+
+- Do not generate detection_time.
+- Do not generate source_time.
+- detection_time is assigned by the monitoring system.
+- source_time comes directly from the source publication timestamp.
 
 CONFIDENCE
 
+- confidence is confidence in the overall classification, not location.
 - Use 0.0 to 1.0.
 - Be conservative, especially when only a headline is available.
 
@@ -181,35 +239,6 @@ OUTPUT RULES
   speculation, or chain-of-thought.
 - reason MUST be exactly one short factual sentence, maximum 25 words.
 - Do not repeat the prompt or discuss alternative classifications.
-
-EXAMPLES
-
-1) "Новороссийск атаковали беспилотники, сообщается о пожаре на мазутном терминале"
-classification: incident
-category: industrial_fire
-location_name: Novorossiysk
-is_black_sea_region: true
-
-2) "Сразу три лесных пожара тушат в Новороссийске"
-classification: incident
-category: wildfire
-location_name: Novorossiysk
-is_black_sea_region: true
-
-3) "Мужчина и женщина погибли при пожаре в доме"
-classification: noise
-category: null
-
-4) "Севастопольские огнеборцы ликвидируют пожар в районе улицы Горпищенко"
-classification: noise
-category: null
-location_name: Sevastopol
-is_black_sea_region: true
-
-5) "Пожар в лесном массиве заповедника на Большом Утрише локализован"
-classification: follow_up
-category: wildfire
-is_new_event: false
 """
 
 
@@ -227,7 +256,6 @@ def _chat_with_retry(
     ):
 
         try:
-
             return client.chat(
                 model=settings.OLLAMA_MODEL,
                 messages=[
@@ -244,7 +272,6 @@ def _chat_with_retry(
             )
 
         except httpx.TransportError as error:
-
             last_error = error
 
             if attempt >= LLM_MAX_ATTEMPTS:
@@ -345,28 +372,26 @@ def classify_news_with_llm(
     }
 
     if result.category is None:
-
         fallback_category = detect_category(
             fallback_text
         )
 
         if fallback_category is not None:
-
             updates["category"] = (
                 fallback_category
             )
 
     if result.location_name is None:
-
         fallback_location = detect_location(
             fallback_text
         )
 
         if fallback_location is not None:
-
             updates["location_name"] = (
                 fallback_location
             )
+            updates["location_type"] = None
+            updates["location_confidence"] = None
 
     return result.model_copy(
         update=updates
