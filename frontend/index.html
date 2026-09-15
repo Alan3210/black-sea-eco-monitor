@@ -153,6 +153,59 @@
             </details>
           </div>
 
+
+          <div class="filter-section">
+            <div class="filter-section__title" data-i18n="ocean.layers">
+              ОКЕАН
+            </div>
+
+            <label class="filter-check filter-check--layer">
+              <input
+                id="currents-layer-toggle"
+                type="checkbox"
+              />
+              <span class="current-layer-symbol" aria-hidden="true">↑</span>
+              <span data-i18n="ocean.currents">
+                Поверхностные течения
+              </span>
+            </label>
+
+            <div
+              id="currents-layer-note"
+              class="filter-note ocean-layer-note"
+              aria-live="polite"
+            >
+              Copernicus Marine · почасовая модель
+            </div>
+
+            <div class="current-size-control">
+              <div class="current-size-control__header">
+                <span data-i18n="ocean.arrowSize">
+                  Размер стрелок
+                </span>
+                <output
+                  id="currents-arrow-size-value"
+                  class="current-size-control__value"
+                  for="currents-arrow-size"
+                >
+                  100%
+                </output>
+              </div>
+
+              <input
+                id="currents-arrow-size"
+                class="current-size-control__slider"
+                type="range"
+                min="60"
+                max="200"
+                step="10"
+                value="100"
+                data-i18n-aria-label="ocean.arrowSizeAria"
+                aria-label="Размер стрелок течений"
+              />
+            </div>
+          </div>
+
           <div class="filter-section">
             <div class="filter-section__title" data-i18n="filters.timeWindow">ПЕРИОД</div>
             <div

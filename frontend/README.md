@@ -1,38 +1,33 @@
-# Black Sea Eco Monitor Web — v0.6
+# Black Sea Eco Monitor Web v0.7.1 — Current Arrow Size
 
-Adds full operator-interface localization with an RU / EN switch.
+Adds an operator-controlled size slider for the Copernicus surface-current arrows.
 
-## New in v0.6
+## New
+- Slider directly under the Surface currents layer.
+- Range: 60% → 200%.
+- Step: 10%.
+- Changes arrow size instantly without reloading Copernicus data.
+- Preference is saved in localStorage and restored after refresh.
+- RU/EN localization.
+- Existing speed-based relative sizing is preserved.
 
-- Russian is the default interface language.
-- RU / EN switch in the top bar.
-- Selected language is persisted in browser local storage.
-- Static UI labels, filters, categories, statuses, severity, legends, panel labels,
-  connection state, grouped incident UI, evidence actions, coordinate-quality notes,
-  and canonical location names are localized.
-- Dates and clock formatting follow the selected locale.
-- Canonical event/source content is not machine-translated: source headlines and source
-  names stay exactly as provided by the Monitor API.
-- Map control tooltips are localized too.
-- Data Quality UI from v0.5 remains intact.
+## Install
+Copy over:
+`D:\repository\black-sea-eco-monitor\frontend`
 
-Run:
-
+## Test
 ```powershell
-npm test
-npm run build
+npm test *> frontend_v071_test.txt
+Get-Content frontend_v071_test.txt -Tail 15
 ```
 
-Expected tests: 22 passed.
+Expected:
+`29 passed`
 
-Then launch with the project-level launcher:
-
-```text
-START_MONITOR.cmd
+## Build
+```powershell
+npm run build *> frontend_v071_build.txt
+Get-Content frontend_v071_build.txt -Tail 20
 ```
 
-Verify:
-1. Russian is selected on first load.
-2. Switching to EN updates the interface immediately.
-3. Reloading the page preserves the selected language.
-4. Open event/group panels in both languages.
+Then restart the monitor.

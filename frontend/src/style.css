@@ -1035,3 +1035,160 @@ h1 {
     font-size: 9px;
   }
 }
+
+
+/* ---------------------------------------------------------
+   Ocean current layer
+   --------------------------------------------------------- */
+
+.filter-check--layer {
+  align-items: center;
+}
+
+.current-layer-symbol {
+  width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid rgba(115, 217, 232, 0.25);
+  border-radius: 999px;
+  background: rgba(115, 217, 232, 0.08);
+  color: #8fe8f3;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.ocean-layer-note {
+  min-height: 30px;
+  line-height: 1.45;
+}
+
+.ocean-layer-note--loading {
+  color: rgba(143, 232, 243, 0.82);
+}
+
+.ocean-layer-note--error {
+  color: #ff9595;
+}
+
+.ocean-current-popup {
+  min-width: 220px;
+  padding: 14px;
+}
+
+.ocean-current-popup__title {
+  margin-bottom: 10px;
+  color: #8fe8f3;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
+.ocean-current-popup__row {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid rgba(157, 220, 236, 0.08);
+  font-size: 11px;
+}
+
+.ocean-current-popup__key {
+  color: rgba(232, 241, 247, 0.42);
+}
+
+.ocean-current-popup__value {
+  color: rgba(232, 241, 247, 0.90);
+  font-weight: 700;
+}
+
+
+/* ---------------------------------------------------------
+   Ocean current arrow size control
+   --------------------------------------------------------- */
+
+.current-size-control {
+  margin-top: 10px;
+  padding: 10px 11px 9px;
+  border: 1px solid rgba(157, 220, 236, 0.10);
+  border-radius: 9px;
+  background: rgba(8, 20, 27, 0.30);
+}
+
+.current-size-control__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: rgba(232, 241, 247, 0.66);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.current-size-control__value {
+  flex: 0 0 auto;
+  min-width: 38px;
+  color: #ffd60a;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.current-size-control__slider {
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  accent-color: #ff8a00;
+}
+
+.current-size-control__slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 138, 0, 0.95),
+      rgba(255, 214, 10, 0.85)
+    );
+}
+
+.current-size-control__slider::-webkit-slider-thumb {
+  width: 15px;
+  height: 15px;
+  margin-top: -5.5px;
+  border: 2px solid #111827;
+  border-radius: 50%;
+  background: #ffd60a;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.20),
+    0 0 10px rgba(255, 138, 0, 0.35);
+  appearance: none;
+}
+
+.current-size-control__slider::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 138, 0, 0.95),
+      rgba(255, 214, 10, 0.85)
+    );
+}
+
+.current-size-control__slider::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border: 2px solid #111827;
+  border-radius: 50%;
+  background: #ffd60a;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.20),
+    0 0 10px rgba(255, 138, 0, 0.35);
+}

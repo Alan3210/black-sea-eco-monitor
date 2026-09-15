@@ -32,7 +32,21 @@ import {
   t,
 } from './i18n.js';
 
+import {
+  cardinalDirection,
+  currentArrowSizeExpression,
+  currentsToFeatureCollection,
+  fetchOceanCurrents,
+  formatCurrentSpeed,
+  formatCurrentValidTime,
+  normalizeCurrentArrowSizePercent,
+} from './currents.js';
+
 const REFRESH_INTERVAL_MS = 60_000;
+const CURRENTS_REFRESH_INTERVAL_MS = 15 * 60_000;
+const CURRENTS_STRIDE = 10;
+const CURRENT_ARROW_SIZE_STORAGE_KEY =
+  'black-sea-eco-monitor.current-arrow-size';
 
 const statusDot = document.getElementById('connection-dot');
 const connectionLabel = document.getElementById('connection-label');
@@ -42,6 +56,19 @@ const resetFiltersButton = document.getElementById('reset-filters');
 const languageButtons = [
   ...document.querySelectorAll('[data-language]'),
 ];
+
+const currentsToggle = document.getElementById(
+  'currents-layer-toggle',
+);
+const currentsNote = document.getElementById(
+  'currents-layer-note',
+);
+const currentsArrowSizeSlider = document.getElementById(
+  'currents-arrow-size',
+);
+const currentsArrowSizeValue = document.getElementById(
+  'currents-arrow-size-value',
+);
 
 const eventPanel = document.getElementById('event-panel');
 const eventPanelContent = document.getElementById('event-panel-content');
@@ -71,6 +98,19 @@ let lastSuccessfulUpdate = null;
 let connectionState = 'loading';
 let connectionErrorMessage = '';
 let currentLanguage = loadStoredLanguage();
+
+let currentsPayload = null;
+let currentsLoading = false;
+let currentsErrorMessage = '';
+let currentsPopup = null;
+
+let currentArrowSizePercent =
+  normalizeCurrentArrowSizePercent(
+    window.localStorage.getItem(
+      CURRENT_ARROW_SIZE_STORAGE_KEY,
+    ),
+    100,
+  );
 
 let selectedEventId = null;
 let selectedGroupId = null;
@@ -1030,6 +1070,453 @@ document.addEventListener(
 );
 
 
+function emptyFeatureCollection() {
+  return {
+    type: 'FeatureCollection',
+    features: [],
+  };
+}
+
+
+function renderCurrentArrowSizeControl() {
+  if (currentsArrowSizeSlider) {
+    currentsArrowSizeSlider.value = String(
+      currentArrowSizePercent,
+    );
+  }
+
+  if (currentsArrowSizeValue) {
+    currentsArrowSizeValue.textContent =
+      `${currentArrowSizePercent}%`;
+  }
+}
+
+
+function applyCurrentArrowSize() {
+  renderCurrentArrowSizeControl();
+
+  if (!map.getLayer('ocean-currents-arrows')) {
+    return;
+  }
+
+  map.setLayoutProperty(
+    'ocean-currents-arrows',
+    'icon-size',
+    currentArrowSizeExpression(
+      currentArrowSizePercent,
+    ),
+  );
+}
+
+
+currentsArrowSizeSlider?.addEventListener(
+  'input',
+  () => {
+    currentArrowSizePercent =
+      normalizeCurrentArrowSizePercent(
+        currentsArrowSizeSlider.value,
+      );
+
+    window.localStorage.setItem(
+      CURRENT_ARROW_SIZE_STORAGE_KEY,
+      String(currentArrowSizePercent),
+    );
+
+    applyCurrentArrowSize();
+  },
+);
+
+
+renderCurrentArrowSizeControl();
+
+function createCurrentArrowImage() {
+  const size = 96;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+
+  const context = canvas.getContext('2d');
+
+  context.clearRect(0, 0, size, size);
+
+  // Large arrow with a very high-contrast silhouette.
+  // Bright warm fill remains readable over blue water,
+  // while the dark outline keeps it visible over land,
+  // labels and administrative borders.
+  context.beginPath();
+  context.moveTo(48, 6);
+  context.lineTo(82, 38);
+  context.lineTo(63, 38);
+  context.lineTo(63, 89);
+  context.lineTo(33, 89);
+  context.lineTo(33, 38);
+  context.lineTo(14, 38);
+  context.closePath();
+
+  // Soft warm glow.
+  context.save();
+  context.shadowColor = 'rgba(255, 214, 10, 0.85)';
+  context.shadowBlur = 12;
+  context.fillStyle = '#ff7a00';
+  context.fill();
+  context.restore();
+
+  // Dark outer contour.
+  context.strokeStyle = 'rgba(17, 24, 39, 0.98)';
+  context.lineWidth = 10;
+  context.lineJoin = 'round';
+  context.stroke();
+
+  // Bright inner fill.
+  context.fillStyle = '#ff8a00';
+  context.fill();
+
+  // Thin light accent to keep the arrow crisp.
+  context.strokeStyle = '#ffe08a';
+  context.lineWidth = 3;
+  context.stroke();
+
+  return context.getImageData(
+    0,
+    0,
+    size,
+    size,
+  );
+}
+
+function currentLayerVisible() {
+  return Boolean(currentsToggle?.checked);
+}
+
+function setCurrentLayerVisibility(visible) {
+  const visibility = visible
+    ? 'visible'
+    : 'none';
+
+  for (const layerId of [
+    'ocean-currents-points',
+    'ocean-currents-arrows',
+  ]) {
+    if (map.getLayer(layerId)) {
+      map.setLayoutProperty(
+        layerId,
+        'visibility',
+        visibility,
+      );
+    }
+  }
+
+  if (!visible && currentsPopup) {
+    currentsPopup.remove();
+    currentsPopup = null;
+  }
+}
+
+function renderCurrentsStatus() {
+  if (!currentsNote) return;
+
+  currentsNote.classList.toggle(
+    'ocean-layer-note--loading',
+    currentsLoading,
+  );
+  currentsNote.classList.toggle(
+    'ocean-layer-note--error',
+    Boolean(currentsErrorMessage),
+  );
+
+  if (!currentLayerVisible()) {
+    currentsNote.textContent = t(
+      currentLanguage,
+      'ocean.currentsOff',
+    );
+    return;
+  }
+
+  if (currentsLoading) {
+    currentsNote.textContent = t(
+      currentLanguage,
+      'ocean.currentsLoading',
+    );
+    return;
+  }
+
+  if (currentsErrorMessage) {
+    currentsNote.textContent = t(
+      currentLanguage,
+      'ocean.currentsError',
+      {
+        message: currentsErrorMessage,
+      },
+    );
+    return;
+  }
+
+  if (currentsPayload) {
+    const key = currentsPayload.cache?.status
+      === 'stale_fallback'
+      ? 'ocean.currentsStale'
+      : 'ocean.currentsReady';
+
+    currentsNote.textContent = t(
+      currentLanguage,
+      key,
+      {
+        time: formatCurrentValidTime(
+          currentsPayload.valid_time,
+          localeForLanguage(currentLanguage),
+        ),
+        count: currentsPayload.vector_count,
+      },
+    );
+    return;
+  }
+
+  currentsNote.textContent = t(
+    currentLanguage,
+    'ocean.currentsOff',
+  );
+}
+
+function makeCurrentPopupContent(properties) {
+  const root = document.createElement('div');
+  root.className = 'ocean-current-popup';
+
+  const title = document.createElement('div');
+  title.className = 'ocean-current-popup__title';
+  title.textContent = t(
+    currentLanguage,
+    'ocean.popupTitle',
+  );
+  root.append(title);
+
+  const rows = [
+    [
+      t(currentLanguage, 'ocean.speed'),
+      formatCurrentSpeed(properties.speed),
+    ],
+    [
+      t(currentLanguage, 'ocean.direction'),
+      `${cardinalDirection(
+        properties.direction_deg,
+        currentLanguage,
+      )} · ${Number(properties.direction_deg).toFixed(0)}°`,
+    ],
+    [
+      t(currentLanguage, 'ocean.components'),
+      `u ${Number(properties.u).toFixed(3)} · v ${Number(properties.v).toFixed(3)} m/s`,
+    ],
+    [
+      t(currentLanguage, 'ocean.modelTime'),
+      formatCurrentValidTime(
+        currentsPayload?.valid_time,
+        localeForLanguage(currentLanguage),
+      ),
+    ],
+    [
+      t(currentLanguage, 'ocean.depth'),
+      currentsPayload?.depth_m == null
+        ? '—'
+        : `${Number(currentsPayload.depth_m).toFixed(2)} m`,
+    ],
+    [
+      t(currentLanguage, 'ocean.source'),
+      currentsPayload?.source || 'Copernicus Marine',
+    ],
+  ];
+
+  for (const [keyText, valueText] of rows) {
+    const row = document.createElement('div');
+    row.className = 'ocean-current-popup__row';
+
+    const key = document.createElement('div');
+    key.className = 'ocean-current-popup__key';
+    key.textContent = keyText;
+
+    const value = document.createElement('div');
+    value.className = 'ocean-current-popup__value';
+    value.textContent = valueText;
+
+    row.append(key, value);
+    root.append(row);
+  }
+
+  return root;
+}
+
+function installCurrentLayer() {
+  if (!map.hasImage('ocean-current-arrow')) {
+    map.addImage(
+      'ocean-current-arrow',
+      createCurrentArrowImage(),
+      {
+        pixelRatio: 2,
+      },
+    );
+  }
+
+  map.addSource('ocean-currents', {
+    type: 'geojson',
+    data: emptyFeatureCollection(),
+  });
+
+  map.addLayer({
+    id: 'ocean-currents-points',
+    type: 'circle',
+    source: 'ocean-currents',
+    layout: {
+      visibility: 'none',
+    },
+    paint: {
+      'circle-radius': [
+        'interpolate',
+        ['linear'],
+        ['get', 'speed'],
+        0, 2.4,
+        0.15, 3.2,
+        0.7, 5.2,
+      ],
+      'circle-color': '#111827',
+      'circle-opacity': 0.78,
+      'circle-stroke-color': '#ffd60a',
+      'circle-stroke-width': 1.5,
+      'circle-stroke-opacity': 0.95,
+    },
+  });
+
+  map.addLayer({
+    id: 'ocean-currents-arrows',
+    type: 'symbol',
+    source: 'ocean-currents',
+    layout: {
+      visibility: 'none',
+      'icon-image': 'ocean-current-arrow',
+      'icon-size': currentArrowSizeExpression(
+        currentArrowSizePercent,
+      ),
+      'icon-rotate': ['get', 'direction_deg'],
+      'icon-rotation-alignment': 'map',
+      'icon-pitch-alignment': 'map',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+      'icon-padding': 0,
+    },
+    paint: {
+      'icon-opacity': [
+        'interpolate',
+        ['linear'],
+        ['get', 'speed'],
+        0, 0.92,
+        0.08, 0.96,
+        0.15, 0.98,
+        0.7, 1.0,
+      ],
+    },
+  });
+
+  applyCurrentArrowSize();
+
+  map.on(
+    'mouseenter',
+    'ocean-currents-arrows',
+    () => {
+      map.getCanvas().style.cursor = 'pointer';
+    },
+  );
+
+  map.on(
+    'mouseleave',
+    'ocean-currents-arrows',
+    () => {
+      map.getCanvas().style.cursor = '';
+    },
+  );
+
+  map.on(
+    'click',
+    'ocean-currents-arrows',
+    (event) => {
+      const feature = event.features?.[0];
+
+      if (!feature) return;
+
+      if (currentsPopup) {
+        currentsPopup.remove();
+      }
+
+      currentsPopup = new maplibregl.Popup({
+        closeButton: true,
+        closeOnClick: true,
+        offset: 10,
+      })
+        .setLngLat(
+          feature.geometry.coordinates,
+        )
+        .setDOMContent(
+          makeCurrentPopupContent(
+            feature.properties ?? {},
+          ),
+        )
+        .addTo(map);
+    },
+  );
+}
+
+async function refreshCurrents() {
+  if (!currentLayerVisible()) return;
+
+  currentsLoading = true;
+  currentsErrorMessage = '';
+  renderCurrentsStatus();
+
+  try {
+    const payload = await fetchOceanCurrents({
+      stride: CURRENTS_STRIDE,
+    });
+
+    currentsPayload = payload;
+
+    const source = map.getSource(
+      'ocean-currents',
+    );
+
+    if (source) {
+      source.setData(
+        currentsToFeatureCollection(payload),
+      );
+    }
+
+    setCurrentLayerVisibility(true);
+  } catch (error) {
+    console.error(
+      '[Black Sea Eco Monitor / currents]',
+      error,
+    );
+
+    currentsErrorMessage = error.message;
+
+    if (!currentsPayload) {
+      setCurrentLayerVisibility(false);
+    }
+  } finally {
+    currentsLoading = false;
+    renderCurrentsStatus();
+  }
+}
+
+currentsToggle?.addEventListener(
+  'change',
+  () => {
+    if (currentLayerVisible()) {
+      setCurrentLayerVisibility(true);
+      void refreshCurrents();
+    } else {
+      setCurrentLayerVisibility(false);
+      renderCurrentsStatus();
+    }
+  },
+);
+
+
 function localizeStaticDom() {
   document.documentElement.lang = currentLanguage;
   document.title = t(
@@ -1131,6 +1618,12 @@ function applyLanguage(language) {
   updateEventCount();
   syncGroupMarkers();
   refreshSelectedPanel();
+  renderCurrentsStatus();
+
+  if (currentsPopup) {
+    currentsPopup.remove();
+    currentsPopup = null;
+  }
 }
 
 for (const button of languageButtons) {
@@ -1260,10 +1753,22 @@ async function refreshEvents() {
 
 map.on('load', () => {
   installEventLayer();
+  installCurrentLayer();
+  renderCurrentsStatus();
+
   void refreshEvents();
 
   window.setInterval(
     refreshEvents,
     REFRESH_INTERVAL_MS,
+  );
+
+  window.setInterval(
+    () => {
+      if (currentLayerVisible()) {
+        void refreshCurrents();
+      }
+    },
+    CURRENTS_REFRESH_INTERVAL_MS,
   );
 });
