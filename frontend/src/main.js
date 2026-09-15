@@ -536,10 +536,45 @@ function renderEventPanel(event, originGroupId = null) {
   );
 
   metrics.append(
-    makeMetric('CONFIDENCE', vm.confidence),
+    makeMetric('EVENT CONFIDENCE', vm.confidence),
+    makeMetric('LOCATION CONFIDENCE', vm.locationConfidence),
     makeMetric('EVIDENCE', String(vm.evidenceCount)),
     makeMetric('COORDINATES', vm.coordinates),
-    makeMetric('LAST SEEN', vm.lastSeen),
+  );
+
+  const locationQuality = makeElement(
+    'section',
+    'detail-section',
+  );
+
+  locationQuality.append(
+    makeElement(
+      'div',
+      'detail-section__title',
+      'LOCATION QUALITY',
+    ),
+  );
+
+  const locationQualityGrid = makeElement(
+    'div',
+    'detail-quality-grid',
+  );
+
+  locationQualityGrid.append(
+    makeMetric('LOCATION TYPE', vm.locationType),
+    makeMetric('MAP SCOPE', vm.locationScope),
+    makeMetric('COORDINATE SOURCE', vm.coordinateSource),
+  );
+
+  const qualityNote = makeElement(
+    'div',
+    'detail-quality-note',
+    vm.coordinateInterpretation,
+  );
+
+  locationQuality.append(
+    locationQualityGrid,
+    qualityNote,
   );
 
   const timeline = makeElement(
@@ -561,6 +596,9 @@ function renderEventPanel(event, originGroupId = null) {
   );
 
   timelineGrid.append(
+    makeMetric('INCIDENT TIME', vm.incidentTime),
+    makeMetric('SOURCE TIME', vm.sourceTime),
+    makeMetric('DETECTED', vm.detectionTime),
     makeMetric('FIRST SEEN', vm.firstSeen),
     makeMetric('LATEST', vm.lastSeen),
   );
@@ -600,6 +638,7 @@ function renderEventPanel(event, originGroupId = null) {
     header,
     pills,
     metrics,
+    locationQuality,
     timeline,
     evidenceSection,
   );

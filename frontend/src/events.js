@@ -18,6 +18,20 @@ export function categoryMeta(category) {
   return CATEGORY_META[category] ?? DEFAULT_CATEGORY_META;
 }
 
+function optionalString(value) {
+  if (value === null || value === undefined) return null;
+
+  const text = String(value).trim();
+  return text || null;
+}
+
+function optionalNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 export function normalizeMonitorEvent(raw) {
   if (!raw || typeof raw !== 'object') return null;
 
@@ -26,6 +40,9 @@ export function normalizeMonitorEvent(raw) {
   const status = String(raw.status ?? 'detected').trim();
   const location = raw.location && typeof raw.location === 'object'
     ? raw.location
+    : {};
+  const time = raw.time && typeof raw.time === 'object'
+    ? raw.time
     : {};
 
   const rawLatitude = location.latitude;
@@ -61,6 +78,9 @@ export function normalizeMonitorEvent(raw) {
       || 'Unknown location',
     latitude,
     longitude,
+    locationType: optionalString(location.type),
+    locationConfidence: optionalNumber(location.confidence),
+    coordinateSource: optionalString(location.source),
     confidence: Number.isFinite(Number(raw.confidence))
       ? Number(raw.confidence)
       : null,
@@ -69,6 +89,9 @@ export function normalizeMonitorEvent(raw) {
       ? Number(raw.evidence_count)
       : 0,
     primaryTitle: String(raw.primary_title ?? '').trim(),
+    incidentTime: optionalString(time.incident_time),
+    detectionTime: optionalString(time.detection_time),
+    sourceTime: optionalString(time.source_time),
     firstSeen: raw.first_seen ?? null,
     lastSeen: raw.last_seen ?? null,
     updatedAt: raw.updated_at ?? null,

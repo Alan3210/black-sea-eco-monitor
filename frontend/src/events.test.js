@@ -31,6 +31,33 @@ test('normalizes a persisted monitor event', () => {
   assert.equal(event.evidenceCount, 4);
 });
 
+test('normalizes data quality location and time metadata', () => {
+  const event = normalizeMonitorEvent({
+    id: 'evt_quality',
+    category: 'wildfire',
+    location: {
+      name: 'Utrish Reserve',
+      latitude: 44.7605,
+      longitude: 37.3854,
+      type: 'protected_area',
+      confidence: 0.91,
+      source: 'canonical_database',
+    },
+    time: {
+      incident_time: null,
+      detection_time: '2026-09-12T22:30:48+00:00',
+      source_time: '2026-09-09T18:05:18+00:00',
+    },
+  });
+
+  assert.equal(event.locationType, 'protected_area');
+  assert.equal(event.locationConfidence, 0.91);
+  assert.equal(event.coordinateSource, 'canonical_database');
+  assert.equal(event.incidentTime, null);
+  assert.equal(event.detectionTime, '2026-09-12T22:30:48+00:00');
+  assert.equal(event.sourceTime, '2026-09-09T18:05:18+00:00');
+});
+
 test('rejects events without usable coordinates', () => {
   const events = normalizeMonitorEvents([
     {

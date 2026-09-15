@@ -43,6 +43,37 @@ export function safeExternalHttpUrl(value) {
   }
 }
 
+export function locationScopeLabel(value) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+
+  const labels = {
+    city: 'City-level',
+    settlement: 'Settlement-level',
+    district: 'District-level',
+    street: 'Street-level',
+    facility: 'Facility-level',
+    protected_area: 'Protected-area',
+    coastal_area: 'Coastal-area',
+    water_body: 'Water-body',
+    region: 'Region-level',
+    other: 'Approximate',
+  };
+
+  return labels[normalized] ?? 'Unknown';
+}
+
+export function coordinateInterpretation(event) {
+  if (event?.coordinateSource === 'canonical_database') {
+    return 'Representative map point — not exact incident coordinates.';
+  }
+
+  if (event?.coordinateSource) {
+    return 'Coordinates include source provenance; verify precision before field use.';
+  }
+
+  return 'Coordinate provenance is unavailable.';
+}
+
 export function eventDetailsViewModel(event) {
   return {
     id: event?.id ?? '',
@@ -53,12 +84,20 @@ export function eventDetailsViewModel(event) {
     status: humanizeToken(event?.status),
     severity: humanizeToken(event?.severity),
     confidence: formatConfidence(event?.confidence),
+    locationConfidence: formatConfidence(event?.locationConfidence),
+    locationType: humanizeToken(event?.locationType),
+    locationScope: locationScopeLabel(event?.locationType),
+    coordinateSource: humanizeToken(event?.coordinateSource),
+    coordinateInterpretation: coordinateInterpretation(event),
     evidenceCount: Number.isFinite(Number(event?.evidenceCount))
       ? Number(event.evidenceCount)
       : 0,
     coordinates: Number.isFinite(event?.latitude) && Number.isFinite(event?.longitude)
       ? `${event.latitude.toFixed(4)}, ${event.longitude.toFixed(4)}`
       : '—',
+    incidentTime: formatEventDate(event?.incidentTime),
+    detectionTime: formatEventDate(event?.detectionTime),
+    sourceTime: formatEventDate(event?.sourceTime),
     firstSeen: formatEventDate(event?.firstSeen),
     lastSeen: formatEventDate(event?.lastSeen || event?.updatedAt),
   };

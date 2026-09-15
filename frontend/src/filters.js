@@ -18,6 +18,9 @@ export const DEFAULT_CATEGORIES = Object.freeze([
 
 export function eventReferenceTime(event) {
   const candidates = [
+    event?.incidentTime,
+    event?.sourceTime,
+    event?.detectionTime,
     event?.lastSeen,
     event?.updatedAt,
     event?.firstSeen,

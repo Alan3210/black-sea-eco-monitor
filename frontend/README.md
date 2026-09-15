@@ -1,13 +1,21 @@
-# Black Sea Eco Monitor Web — v0.4
+# Black Sea Eco Monitor Web — v0.5
 
-Adds:
-- Co-located event grouping for incidents that share one canonical map point
-- Count marker instead of overlapping circles
-- Group details view listing every incident at the shared point
-- Drill-down from a group into an individual Event Details panel
-- Back navigation from an event to its co-located incident list
-- Group selection highlight
-- Group behavior respects current status/category/time filters
+Adds Data Quality visibility to the operator UI.
+
+## New in v0.5
+
+- Reads `location.type`, `location.confidence`, and `location.source` from the canonical Monitor API.
+- Reads `time.incident_time`, `time.detection_time`, and `time.source_time`.
+- Event Details now separates event confidence from location confidence.
+- Adds a Location Quality section with location type, map scope, and coordinate source.
+- Canonical database coordinates are explicitly labeled as representative map points, not exact incident coordinates.
+- Timeline shows incident time, source publication time, detection time, first seen, and latest time.
+- Time-window filtering now prefers:
+  1. incident time
+  2. source time
+  3. detection time
+  4. legacy last-seen / updated / first-seen timestamps
+- Co-located incident grouping remains unchanged.
 
 Run:
 
@@ -16,14 +24,13 @@ npm test
 npm run build
 ```
 
-Expected tests: 12 passed.
+Expected tests: 17 passed.
 
-Then use the project-level:
+Then use the project-level launcher:
 
 ```text
 START_MONITOR.cmd
 ```
 
-On the current data, the two Novorossiysk incidents should appear as one marker
-with the number `2`. Clicking it opens the incident list; choosing either event
-opens its normal evidence/details panel.
+Open any incident in the right-side Event Details panel and verify the new
+`LOCATION QUALITY` and expanded `TIMELINE` sections.

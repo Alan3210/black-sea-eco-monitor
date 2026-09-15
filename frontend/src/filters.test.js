@@ -13,6 +13,9 @@ function event(overrides = {}) {
     id: 'evt',
     status: 'active',
     category: 'wildfire',
+    incidentTime: null,
+    sourceTime: null,
+    detectionTime: null,
     lastSeen: '2026-09-12T12:00:00Z',
     updatedAt: null,
     firstSeen: null,
@@ -46,15 +49,51 @@ test('filters by status and category', () => {
   );
 });
 
-test('filters by time window using latest-seen time', () => {
+test('prefers incident time over system update timestamps', () => {
+  const row = event({
+    incidentTime: '2026-09-10T06:00:00Z',
+    sourceTime: '2026-09-13T08:00:00Z',
+    detectionTime: '2026-09-13T09:00:00Z',
+    lastSeen: '2026-09-13T10:00:00Z',
+  });
+
+  assert.equal(
+    eventReferenceTime(row),
+    Date.parse('2026-09-10T06:00:00Z'),
+  );
+});
+
+test('falls back from source time to detection time before legacy timestamps', () => {
+  assert.equal(
+    eventReferenceTime(event({
+      sourceTime: '2026-09-11T06:00:00Z',
+      detectionTime: '2026-09-12T06:00:00Z',
+      lastSeen: '2026-09-13T06:00:00Z',
+    })),
+    Date.parse('2026-09-11T06:00:00Z'),
+  );
+
+  assert.equal(
+    eventReferenceTime(event({
+      sourceTime: null,
+      detectionTime: '2026-09-12T06:00:00Z',
+      lastSeen: '2026-09-13T06:00:00Z',
+    })),
+    Date.parse('2026-09-12T06:00:00Z'),
+  );
+});
+
+test('filters by time window using data quality reference time', () => {
   const rows = [
     event({
       id: 'fresh',
-      lastSeen: '2026-09-13T06:00:00Z',
+      sourceTime: '2026-09-13T06:00:00Z',
+      lastSeen: '2026-09-13T07:00:00Z',
     }),
     event({
       id: 'old',
-      lastSeen: '2026-09-10T06:00:00Z',
+      sourceTime: '2026-09-10T06:00:00Z',
+      lastSeen: '2026-09-13T07:00:00Z',
     }),
   ];
 

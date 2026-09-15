@@ -929,3 +929,43 @@ h1 {
   border-color: rgba(115, 217, 232, 0.30);
   background: rgba(115, 217, 232, 0.09);
 }
+
+/* ---------------------------------------------------------
+   v0.5 — Data Quality metadata
+   --------------------------------------------------------- */
+
+.detail-quality-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.detail-quality-grid .detail-metric:last-child {
+  grid-column: 1 / -1;
+}
+
+.detail-quality-note {
+  margin-top: 9px;
+  padding: 9px 10px;
+  border: 1px solid rgba(244, 201, 93, 0.14);
+  border-radius: 9px;
+  background: rgba(244, 201, 93, 0.045);
+  color: rgba(241, 224, 163, 0.68);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.detail-timeline {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 720px) {
+  .detail-quality-grid,
+  .detail-timeline {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-quality-grid .detail-metric:last-child {
+    grid-column: auto;
+  }
+}

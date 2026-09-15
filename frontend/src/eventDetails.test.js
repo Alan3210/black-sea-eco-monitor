@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  coordinateInterpretation,
   eventDetailsViewModel,
   humanizeToken,
+  locationScopeLabel,
   safeExternalHttpUrl,
 } from './eventDetails.js';
 
@@ -32,6 +34,38 @@ test('builds operator-friendly event details', () => {
   assert.equal(vm.confidence, '84%');
   assert.equal(vm.evidenceCount, 3);
   assert.equal(vm.coordinates, '44.5609, 38.0767');
+});
+
+test('builds data quality labels for canonical coordinates', () => {
+  const vm = eventDetailsViewModel({
+    locationType: 'protected_area',
+    locationConfidence: 0.91,
+    coordinateSource: 'canonical_database',
+    incidentTime: null,
+    detectionTime: '2026-09-12T22:30:48Z',
+    sourceTime: '2026-09-09T18:05:18Z',
+  });
+
+  assert.equal(vm.locationType, 'Protected Area');
+  assert.equal(vm.locationScope, 'Protected-area');
+  assert.equal(vm.locationConfidence, '91%');
+  assert.equal(vm.coordinateSource, 'Canonical Database');
+  assert.match(vm.coordinateInterpretation, /Representative map point/);
+  assert.equal(vm.incidentTime, '—');
+  assert.notEqual(vm.detectionTime, '—');
+  assert.notEqual(vm.sourceTime, '—');
+});
+
+test('maps water bodies to a water-body scope label', () => {
+  assert.equal(
+    locationScopeLabel('water_body'),
+    'Water-body',
+  );
+
+  assert.match(
+    coordinateInterpretation({ coordinateSource: 'canonical_database' }),
+    /not exact incident coordinates/,
+  );
 });
 
 test('humanizes machine tokens', () => {
