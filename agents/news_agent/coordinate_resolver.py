@@ -39,6 +39,10 @@ LOCATION_COORDINATES = {
         latitude=44.7605,
         longitude=37.3854,
     ),
+    "Kerch Strait": ResolvedCoordinates(
+        latitude=45.3000,
+        longitude=36.5000,
+    ),
 }
 
 
