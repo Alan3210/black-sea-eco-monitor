@@ -1,5 +1,9 @@
 from fastapi import FastAPI
 
+from backend.api.ocean_drift import router as ocean_drift_router
+
+from backend.api.ocean_currents import router as ocean_currents_router
+
 from backend.api.evidence import router as evidence_router
 
 from backend.api.events import router as events_router
@@ -38,6 +42,18 @@ app.include_router(
     monitor_events_router,
     prefix="/monitor/events",
     tags=["monitor"],
+)
+
+
+
+app.include_router(
+    ocean_currents_router
+)
+
+
+
+app.include_router(
+    ocean_drift_router
 )
 
 @app.get("/")

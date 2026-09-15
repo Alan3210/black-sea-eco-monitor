@@ -42,11 +42,64 @@ import {
   normalizeCurrentArrowSizePercent,
 } from './currents.js';
 
+import {
+  CurrentParticleEngine,
+  normalizeCurrentDisplayMode,
+  normalizeParticleCount,
+  normalizeParticleSpeedPercent,
+  normalizeParticleTrailPercent,
+} from './currentParticles.js';
+
+import {
+  DEFAULT_DRIFT_HORIZON,
+  DEFAULT_DRIFT_PARTICLES,
+  driftCenterGeoJSON,
+  driftEnvelopeGeoJSON,
+  driftPointsGeoJSON,
+  driftSeedGeoJSON,
+  driftTrackGeoJSON,
+  fetchDriftForecast,
+  normalizeDriftHorizon,
+  normalizeDriftParticles,
+  snapshotForHorizon,
+} from './drift.js';
+
+import {
+  BLACK_SEA_CENTER,
+  BLACK_SEA_INITIAL_ZOOM,
+  BLACK_SEA_MAX_ZOOM,
+  BLACK_SEA_MIN_ZOOM,
+  BLACK_SEA_NAVIGATION_BOUNDS,
+  installRegionalFocus,
+} from './regionalFocus.js';
+
+import {
+  longTaskViewModel,
+} from './longTask.js';
+
 const REFRESH_INTERVAL_MS = 60_000;
 const CURRENTS_REFRESH_INTERVAL_MS = 15 * 60_000;
 const CURRENTS_STRIDE = 10;
 const CURRENT_ARROW_SIZE_STORAGE_KEY =
   'black-sea-eco-monitor.current-arrow-size';
+
+const CURRENT_DISPLAY_MODE_STORAGE_KEY =
+  'black-sea-eco-monitor.current-display-mode';
+
+const PARTICLE_COUNT_STORAGE_KEY =
+  'black-sea-eco-monitor.particle-count';
+
+const PARTICLE_SPEED_STORAGE_KEY =
+  'black-sea-eco-monitor.particle-speed';
+
+const PARTICLE_TRAIL_STORAGE_KEY =
+  'black-sea-eco-monitor.particle-trail';
+
+const DRIFT_HORIZON_STORAGE_KEY =
+  'black-sea-eco-monitor.drift-horizon';
+
+const DRIFT_PARTICLES_STORAGE_KEY =
+  'black-sea-eco-monitor.drift-particles';
 
 const statusDot = document.getElementById('connection-dot');
 const connectionLabel = document.getElementById('connection-label');
@@ -63,11 +116,90 @@ const currentsToggle = document.getElementById(
 const currentsNote = document.getElementById(
   'currents-layer-note',
 );
+const currentsLongTask = document.getElementById(
+  'currents-long-task',
+);
+const currentsLongTaskElapsed = document.getElementById(
+  'currents-long-task-elapsed',
+);
+const currentsLongTaskMessage = document.getElementById(
+  'currents-long-task-message',
+);
 const currentsArrowSizeSlider = document.getElementById(
   'currents-arrow-size',
 );
 const currentsArrowSizeValue = document.getElementById(
   'currents-arrow-size-value',
+);
+
+const currentDisplayModeInputs = [
+  ...document.querySelectorAll(
+    'input[name="current-display-mode"]',
+  ),
+];
+
+const particleControls = document.getElementById(
+  'particle-controls',
+);
+
+const particleCountSlider = document.getElementById(
+  'particle-count',
+);
+
+const particleCountValue = document.getElementById(
+  'particle-count-value',
+);
+
+const particleSpeedSlider = document.getElementById(
+  'particle-speed',
+);
+
+const particleSpeedValue = document.getElementById(
+  'particle-speed-value',
+);
+
+const particleTrailSlider = document.getElementById(
+  'particle-trail',
+);
+
+const particleTrailValue = document.getElementById(
+  'particle-trail-value',
+);
+
+const driftStatus = document.getElementById(
+  'drift-status',
+);
+const driftLongTask = document.getElementById(
+  'drift-long-task',
+);
+const driftLongTaskElapsed = document.getElementById(
+  'drift-long-task-elapsed',
+);
+const driftLongTaskMessage = document.getElementById(
+  'drift-long-task-message',
+);
+const driftPickPointButton = document.getElementById(
+  'drift-pick-point',
+);
+const driftClearButton = document.getElementById(
+  'drift-clear',
+);
+const driftCoordinate = document.getElementById(
+  'drift-coordinate',
+);
+const driftRunButton = document.getElementById(
+  'drift-run',
+);
+const driftHorizonInputs = [
+  ...document.querySelectorAll(
+    'input[name="drift-horizon"]',
+  ),
+];
+const driftParticlesSlider = document.getElementById(
+  'drift-particles',
+);
+const driftParticlesValue = document.getElementById(
+  'drift-particles-value',
 );
 
 const eventPanel = document.getElementById('event-panel');
@@ -112,16 +244,88 @@ let currentArrowSizePercent =
     100,
   );
 
+let currentDisplayMode =
+  normalizeCurrentDisplayMode(
+    window.localStorage.getItem(
+      CURRENT_DISPLAY_MODE_STORAGE_KEY,
+    ),
+    'arrows',
+  );
+
+let particleCount =
+  normalizeParticleCount(
+    window.localStorage.getItem(
+      PARTICLE_COUNT_STORAGE_KEY,
+    ),
+    (
+      navigator.hardwareConcurrency
+      && navigator.hardwareConcurrency <= 4
+    )
+      ? 900
+      : (
+        navigator.hardwareConcurrency
+        && navigator.hardwareConcurrency <= 8
+      )
+        ? 1500
+        : 2200,
+  );
+
+let particleSpeedPercent =
+  normalizeParticleSpeedPercent(
+    window.localStorage.getItem(
+      PARTICLE_SPEED_STORAGE_KEY,
+    ),
+    100,
+  );
+
+let particleTrailPercent =
+  normalizeParticleTrailPercent(
+    window.localStorage.getItem(
+      PARTICLE_TRAIL_STORAGE_KEY,
+    ),
+    70,
+  );
+
+let currentParticleEngine = null;
+let mapIsMoving = false;
+
+let driftSelectionActive = false;
+let driftSelectionJustConsumed = false;
+let driftSeed = null;
+let driftPayload = null;
+let driftLoading = false;
+let driftErrorMessage = '';
+
+let currentsLoadingStartedAt = null;
+let driftLoadingStartedAt = null;
+let longTaskTicker = null;
+
+let driftHorizon = normalizeDriftHorizon(
+  window.localStorage.getItem(
+    DRIFT_HORIZON_STORAGE_KEY,
+  ),
+  DEFAULT_DRIFT_HORIZON,
+);
+
+let driftParticles = normalizeDriftParticles(
+  window.localStorage.getItem(
+    DRIFT_PARTICLES_STORAGE_KEY,
+  ),
+  DEFAULT_DRIFT_PARTICLES,
+);
+
 let selectedEventId = null;
 let selectedGroupId = null;
 let panelRenderToken = 0;
 
 const map = new maplibregl.Map({
   container: 'map',
-  center: [35.2, 43.5],
-  zoom: 4.7,
-  minZoom: 3,
-  maxZoom: 14,
+  center: BLACK_SEA_CENTER,
+  zoom: BLACK_SEA_INITIAL_ZOOM,
+  minZoom: BLACK_SEA_MIN_ZOOM,
+  maxZoom: BLACK_SEA_MAX_ZOOM,
+  maxBounds: BLACK_SEA_NAVIGATION_BOUNDS,
+  renderWorldCopies: false,
   attributionControl: false,
   style: {
     version: 8,
@@ -1078,6 +1282,462 @@ function emptyFeatureCollection() {
 }
 
 
+
+function setGeoJSONSourceData(
+  sourceId,
+  data,
+) {
+  const source = map.getSource(sourceId);
+
+  if (source) {
+    source.setData(data);
+  }
+}
+
+
+function renderLongTaskUX() {
+  const now = Date.now();
+
+  const currentsView = longTaskViewModel({
+    startedAtMs: currentsLoadingStartedAt,
+    nowMs: now,
+    revealAfterMs: 650,
+    slowAfterSeconds: 120,
+  });
+
+  if (currentsLongTask) {
+    currentsLongTask.hidden = !(
+      currentsLoading
+      && currentsView.visible
+    );
+  }
+
+  if (currentsLongTaskElapsed) {
+    currentsLongTaskElapsed.textContent = t(
+      currentLanguage,
+      'task.elapsed',
+      { time: currentsView.elapsedText },
+    );
+  }
+
+  if (currentsLongTaskMessage) {
+    currentsLongTaskMessage.textContent = t(
+      currentLanguage,
+      currentsView.slow
+        ? 'ocean.waitSlow'
+        : 'ocean.waitNormal',
+    );
+  }
+
+  const driftView = longTaskViewModel({
+    startedAtMs: driftLoadingStartedAt,
+    nowMs: now,
+    revealAfterMs: 450,
+    slowAfterSeconds: 180,
+  });
+
+  if (driftLongTask) {
+    driftLongTask.hidden = !(
+      driftLoading
+      && driftView.visible
+    );
+  }
+
+  if (driftLongTaskElapsed) {
+    driftLongTaskElapsed.textContent = t(
+      currentLanguage,
+      'task.elapsed',
+      { time: driftView.elapsedText },
+    );
+  }
+
+  if (driftLongTaskMessage) {
+    driftLongTaskMessage.textContent = t(
+      currentLanguage,
+      driftView.slow
+        ? 'drift.waitSlow'
+        : 'drift.waitNormal',
+    );
+  }
+}
+
+
+function syncLongTaskTicker() {
+  const anyActive = Boolean(
+    currentsLoadingStartedAt
+    || driftLoadingStartedAt
+  );
+
+  if (anyActive && longTaskTicker === null) {
+    longTaskTicker = window.setInterval(
+      renderLongTaskUX,
+      1000,
+    );
+  }
+
+  if (!anyActive && longTaskTicker !== null) {
+    window.clearInterval(longTaskTicker);
+    longTaskTicker = null;
+  }
+
+  renderLongTaskUX();
+}
+
+
+function startLongTask(kind) {
+  if (kind === 'currents') {
+    currentsLoadingStartedAt = Date.now();
+  }
+
+  if (kind === 'drift') {
+    driftLoadingStartedAt = Date.now();
+  }
+
+  syncLongTaskTicker();
+}
+
+
+function stopLongTask(kind) {
+  if (kind === 'currents') {
+    currentsLoadingStartedAt = null;
+  }
+
+  if (kind === 'drift') {
+    driftLoadingStartedAt = null;
+  }
+
+  syncLongTaskTicker();
+}
+
+
+function renderDriftControls() {
+  for (const input of driftHorizonInputs) {
+    input.checked = Number(input.value) === driftHorizon;
+  }
+
+  if (driftParticlesSlider) {
+    driftParticlesSlider.value = String(driftParticles);
+  }
+
+  if (driftParticlesValue) {
+    driftParticlesValue.textContent = String(driftParticles);
+  }
+
+  if (driftCoordinate) {
+    driftCoordinate.textContent = driftSeed
+      ? `${driftSeed.latitude.toFixed(5)}, ${driftSeed.longitude.toFixed(5)}`
+      : '—';
+  }
+
+  if (driftRunButton) {
+    driftRunButton.disabled = !driftSeed || driftLoading;
+    driftRunButton.textContent = t(
+      currentLanguage,
+      driftLoading
+        ? 'drift.runningButton'
+        : (driftPayload ? 'drift.rerun' : 'drift.run'),
+    );
+  }
+
+  for (const input of driftHorizonInputs) {
+    input.disabled = driftLoading;
+  }
+
+  if (driftParticlesSlider) {
+    driftParticlesSlider.disabled = driftLoading;
+  }
+
+  if (driftPickPointButton) {
+    driftPickPointButton.disabled = driftLoading;
+  }
+
+  if (driftClearButton) {
+    driftClearButton.disabled = driftLoading;
+  }
+
+  driftStatus
+    ?.closest('.drift-control')
+    ?.classList.toggle(
+      'drift-control--busy',
+      driftLoading,
+    );
+
+  if (driftPickPointButton) {
+    driftPickPointButton.classList.toggle(
+      'drift-button--active',
+      driftSelectionActive,
+    );
+    driftPickPointButton.textContent = t(
+      currentLanguage,
+      driftSelectionActive
+        ? 'drift.pickPointActive'
+        : 'drift.pickPoint',
+    );
+  }
+
+  if (driftStatus) {
+    driftStatus.classList.toggle(
+      'drift-control__status--loading',
+      driftLoading,
+    );
+    driftStatus.classList.toggle(
+      'drift-control__status--ready',
+      Boolean(driftPayload) && !driftLoading && !driftErrorMessage,
+    );
+    driftStatus.classList.toggle(
+      'drift-control__status--error',
+      Boolean(driftErrorMessage),
+    );
+
+    if (driftLoading) {
+      driftStatus.textContent = t(currentLanguage, 'drift.loading');
+    } else if (driftErrorMessage) {
+      driftStatus.textContent = t(
+        currentLanguage,
+        'drift.error',
+        { message: driftErrorMessage },
+      );
+    } else if (driftPayload) {
+      const snapshot = snapshotForHorizon(
+        driftPayload,
+        driftHorizon,
+      );
+
+      driftStatus.textContent = t(
+        currentLanguage,
+        'drift.ready',
+        {
+          hours: driftHorizon,
+          count: snapshot?.particle_count ?? driftParticles,
+        },
+      );
+    } else if (driftSelectionActive) {
+      driftStatus.textContent = t(currentLanguage, 'drift.selecting');
+    } else if (driftSeed) {
+      driftStatus.textContent = t(currentLanguage, 'drift.pointSelected');
+    } else {
+      driftStatus.textContent = t(currentLanguage, 'drift.help');
+    }
+  }
+
+  renderLongTaskUX();
+}
+
+
+function clearDriftMapData({ keepSeed = false } = {}) {
+  setGeoJSONSourceData(
+    'drift-cloud',
+    { type: 'FeatureCollection', features: [] },
+  );
+  setGeoJSONSourceData(
+    'drift-envelope',
+    { type: 'FeatureCollection', features: [] },
+  );
+  setGeoJSONSourceData(
+    'drift-track',
+    { type: 'FeatureCollection', features: [] },
+  );
+  setGeoJSONSourceData(
+    'drift-center',
+    { type: 'FeatureCollection', features: [] },
+  );
+
+  if (!keepSeed) {
+    setGeoJSONSourceData(
+      'drift-seed',
+      { type: 'FeatureCollection', features: [] },
+    );
+  }
+}
+
+
+function renderDriftMap() {
+  setGeoJSONSourceData(
+    'drift-seed',
+    driftSeedGeoJSON(driftSeed),
+  );
+
+  if (!driftPayload) {
+    clearDriftMapData({ keepSeed: true });
+    return;
+  }
+
+  const snapshot = snapshotForHorizon(
+    driftPayload,
+    driftHorizon,
+  );
+
+  if (!snapshot) {
+    clearDriftMapData({ keepSeed: true });
+    return;
+  }
+
+  setGeoJSONSourceData(
+    'drift-cloud',
+    driftPointsGeoJSON(snapshot),
+  );
+  setGeoJSONSourceData(
+    'drift-envelope',
+    driftEnvelopeGeoJSON(snapshot),
+  );
+  setGeoJSONSourceData(
+    'drift-center',
+    driftCenterGeoJSON(snapshot),
+  );
+  setGeoJSONSourceData(
+    'drift-track',
+    driftTrackGeoJSON(
+      driftPayload,
+      driftHorizon,
+    ),
+  );
+}
+
+
+function clearDriftForecast() {
+  driftSelectionActive = false;
+  driftSeed = null;
+  driftPayload = null;
+  driftLoading = false;
+  driftErrorMessage = '';
+  stopLongTask('drift');
+  map.getCanvas().style.cursor = '';
+  clearDriftMapData();
+  renderDriftControls();
+}
+
+
+async function runDriftForecast() {
+  if (!driftSeed || driftLoading) {
+    return;
+  }
+
+  driftLoading = true;
+  driftErrorMessage = '';
+  startLongTask('drift');
+  renderDriftControls();
+
+  try {
+    const payload = await fetchDriftForecast({
+      longitude: driftSeed.longitude,
+      latitude: driftSeed.latitude,
+      hours: driftHorizon,
+      particles: driftParticles,
+    });
+
+    driftPayload = payload;
+    renderDriftMap();
+  } catch (error) {
+    console.error('[Black Sea Eco Monitor drift]', error);
+    driftPayload = null;
+    driftErrorMessage = error?.message || String(error);
+    clearDriftMapData({ keepSeed: true });
+  } finally {
+    driftLoading = false;
+    stopLongTask('drift');
+    renderDriftControls();
+  }
+}
+
+
+function installDriftLayer() {
+  const empty = {
+    type: 'FeatureCollection',
+    features: [],
+  };
+
+  for (const sourceId of [
+    'drift-envelope',
+    'drift-track',
+    'drift-cloud',
+    'drift-seed',
+    'drift-center',
+  ]) {
+    map.addSource(sourceId, {
+      type: 'geojson',
+      data: empty,
+    });
+  }
+
+  map.addLayer({
+    id: 'drift-envelope-fill',
+    type: 'fill',
+    source: 'drift-envelope',
+    paint: {
+      'fill-color': '#ff8a00',
+      'fill-opacity': 0.13,
+    },
+  });
+
+  map.addLayer({
+    id: 'drift-envelope-line',
+    type: 'line',
+    source: 'drift-envelope',
+    paint: {
+      'line-color': '#ff9f43',
+      'line-width': 2,
+      'line-opacity': 0.88,
+    },
+  });
+
+  map.addLayer({
+    id: 'drift-track-line',
+    type: 'line',
+    source: 'drift-track',
+    paint: {
+      'line-color': '#ffd60a',
+      'line-width': 2.2,
+      'line-opacity': 0.92,
+      'line-dasharray': [2, 1.5],
+    },
+  });
+
+  map.addLayer({
+    id: 'drift-cloud-points',
+    type: 'circle',
+    source: 'drift-cloud',
+    paint: {
+      'circle-radius': [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        3, 2.0,
+        8, 3.6,
+      ],
+      'circle-color': '#ff6b35',
+      'circle-opacity': 0.48,
+      'circle-stroke-color': '#ffd166',
+      'circle-stroke-width': 0.5,
+      'circle-stroke-opacity': 0.55,
+    },
+  });
+
+  map.addLayer({
+    id: 'drift-seed-point',
+    type: 'circle',
+    source: 'drift-seed',
+    paint: {
+      'circle-radius': 7,
+      'circle-color': '#071018',
+      'circle-stroke-color': '#ffffff',
+      'circle-stroke-width': 2.5,
+    },
+  });
+
+  map.addLayer({
+    id: 'drift-center-point',
+    type: 'circle',
+    source: 'drift-center',
+    paint: {
+      'circle-radius': 6,
+      'circle-color': '#ffd60a',
+      'circle-stroke-color': '#111827',
+      'circle-stroke-width': 2,
+    },
+  });
+}
+
+
 function renderCurrentArrowSizeControl() {
   if (currentsArrowSizeSlider) {
     currentsArrowSizeSlider.value = String(
@@ -1088,6 +1748,217 @@ function renderCurrentArrowSizeControl() {
   if (currentsArrowSizeValue) {
     currentsArrowSizeValue.textContent =
       `${currentArrowSizePercent}%`;
+  }
+}
+
+
+function modeShowsArrows() {
+  return (
+    currentDisplayMode === 'arrows'
+    || currentDisplayMode === 'both'
+  );
+}
+
+
+function modeShowsParticles() {
+  return (
+    currentDisplayMode === 'particles'
+    || currentDisplayMode === 'both'
+  );
+}
+
+
+function renderCurrentDisplayControls() {
+  for (
+    const input
+    of currentDisplayModeInputs
+  ) {
+    input.checked =
+      input.value
+      === currentDisplayMode;
+  }
+
+  if (particleCountSlider) {
+    particleCountSlider.value =
+      String(particleCount);
+  }
+
+  if (particleCountValue) {
+    particleCountValue.textContent =
+      String(particleCount);
+  }
+
+  if (particleSpeedSlider) {
+    particleSpeedSlider.value =
+      String(
+        particleSpeedPercent,
+      );
+  }
+
+  if (particleSpeedValue) {
+    particleSpeedValue.textContent =
+      `${particleSpeedPercent}%`;
+  }
+
+  if (particleTrailSlider) {
+    particleTrailSlider.value =
+      String(
+        particleTrailPercent,
+      );
+  }
+
+  if (particleTrailValue) {
+    particleTrailValue.textContent =
+      `${particleTrailPercent}%`;
+  }
+
+  const particlesEnabled =
+    modeShowsParticles();
+
+  particleControls?.classList.toggle(
+    'particle-controls--disabled',
+    !particlesEnabled,
+  );
+
+  for (
+    const input
+    of [
+      particleCountSlider,
+      particleSpeedSlider,
+      particleTrailSlider,
+    ]
+  ) {
+    if (input) {
+      input.disabled =
+        !particlesEnabled;
+    }
+  }
+
+  const arrowControl =
+    currentsArrowSizeSlider
+      ?.closest(
+        '.current-size-control',
+      );
+
+  arrowControl?.classList.toggle(
+    'current-size-control--disabled',
+    !modeShowsArrows(),
+  );
+
+  if (currentsArrowSizeSlider) {
+    currentsArrowSizeSlider.disabled =
+      !modeShowsArrows();
+  }
+}
+
+
+function ensureParticleEngine() {
+  if (currentParticleEngine) {
+    return currentParticleEngine;
+  }
+
+  const mapCanvasContainer =
+    map.getCanvasContainer();
+
+  const canvas =
+    document.createElement('canvas');
+
+  canvas.id =
+    'current-particles-canvas';
+
+  canvas.className =
+    'current-particles-canvas';
+
+  canvas.setAttribute(
+    'aria-hidden',
+    'true',
+  );
+
+  mapCanvasContainer.append(
+    canvas,
+  );
+
+  currentParticleEngine =
+    new CurrentParticleEngine({
+      canvas,
+      map,
+      particleCount,
+      speedPercent:
+        particleSpeedPercent,
+      trailPercent:
+        particleTrailPercent,
+    });
+
+  if (currentsPayload) {
+    currentParticleEngine.setField(
+      currentsPayload,
+    );
+  }
+
+  return currentParticleEngine;
+}
+
+
+function syncCurrentVisualization() {
+  renderCurrentDisplayControls();
+
+  const layerEnabled =
+    currentLayerVisible();
+
+  const arrowVisibility =
+    (
+      layerEnabled
+      && modeShowsArrows()
+    )
+      ? 'visible'
+      : 'none';
+
+  for (const layerId of [
+    'ocean-currents-points',
+    'ocean-currents-arrows',
+  ]) {
+    if (map.getLayer(layerId)) {
+      map.setLayoutProperty(
+        layerId,
+        'visibility',
+        arrowVisibility,
+      );
+    }
+  }
+
+  if (
+    !layerEnabled
+    || !modeShowsParticles()
+    || !currentsPayload
+    || document.hidden
+    || mapIsMoving
+  ) {
+    currentParticleEngine?.stop();
+  } else {
+    const engine =
+      ensureParticleEngine();
+
+    engine.setParticleCount(
+      particleCount,
+    );
+
+    engine.setSpeedPercent(
+      particleSpeedPercent,
+    );
+
+    engine.setTrailPercent(
+      particleTrailPercent,
+    );
+
+    engine.start();
+  }
+
+  if (
+    !layerEnabled
+    && currentsPopup
+  ) {
+    currentsPopup.remove();
+    currentsPopup = null;
   }
 }
 
@@ -1128,6 +1999,165 @@ currentsArrowSizeSlider?.addEventListener(
 
 
 renderCurrentArrowSizeControl();
+
+
+for (
+  const input
+  of currentDisplayModeInputs
+) {
+  input.addEventListener(
+    'change',
+    () => {
+      if (!input.checked) {
+        return;
+      }
+
+      currentDisplayMode =
+        normalizeCurrentDisplayMode(
+          input.value,
+        );
+
+      window.localStorage.setItem(
+        CURRENT_DISPLAY_MODE_STORAGE_KEY,
+        currentDisplayMode,
+      );
+
+      syncCurrentVisualization();
+    },
+  );
+}
+
+
+particleCountSlider?.addEventListener(
+  'input',
+  () => {
+    particleCount =
+      normalizeParticleCount(
+        particleCountSlider.value,
+      );
+
+    window.localStorage.setItem(
+      PARTICLE_COUNT_STORAGE_KEY,
+      String(particleCount),
+    );
+
+    currentParticleEngine?.setParticleCount(
+      particleCount,
+    );
+
+    renderCurrentDisplayControls();
+  },
+);
+
+
+particleSpeedSlider?.addEventListener(
+  'input',
+  () => {
+    particleSpeedPercent =
+      normalizeParticleSpeedPercent(
+        particleSpeedSlider.value,
+      );
+
+    window.localStorage.setItem(
+      PARTICLE_SPEED_STORAGE_KEY,
+      String(
+        particleSpeedPercent,
+      ),
+    );
+
+    currentParticleEngine?.setSpeedPercent(
+      particleSpeedPercent,
+    );
+
+    renderCurrentDisplayControls();
+  },
+);
+
+
+particleTrailSlider?.addEventListener(
+  'input',
+  () => {
+    particleTrailPercent =
+      normalizeParticleTrailPercent(
+        particleTrailSlider.value,
+      );
+
+    window.localStorage.setItem(
+      PARTICLE_TRAIL_STORAGE_KEY,
+      String(
+        particleTrailPercent,
+      ),
+    );
+
+    currentParticleEngine?.setTrailPercent(
+      particleTrailPercent,
+    );
+
+    renderCurrentDisplayControls();
+  },
+);
+
+
+renderCurrentDisplayControls();
+
+
+for (const input of driftHorizonInputs) {
+  input.addEventListener('change', () => {
+    if (!input.checked) return;
+
+    driftHorizon = normalizeDriftHorizon(input.value);
+    window.localStorage.setItem(
+      DRIFT_HORIZON_STORAGE_KEY,
+      String(driftHorizon),
+    );
+
+    // An existing response can contain lower cumulative horizons.
+    // If the chosen horizon is already available, redraw immediately;
+    // otherwise the Run button triggers a new backend simulation.
+    if (snapshotForHorizon(driftPayload, driftHorizon)) {
+      renderDriftMap();
+    } else if (driftPayload) {
+      driftPayload = null;
+      clearDriftMapData({ keepSeed: true });
+    }
+
+    renderDriftControls();
+  });
+}
+
+
+driftParticlesSlider?.addEventListener('input', () => {
+  driftParticles = normalizeDriftParticles(
+    driftParticlesSlider.value,
+  );
+
+  window.localStorage.setItem(
+    DRIFT_PARTICLES_STORAGE_KEY,
+    String(driftParticles),
+  );
+
+  renderDriftControls();
+});
+
+
+driftPickPointButton?.addEventListener('click', () => {
+  driftSelectionActive = !driftSelectionActive;
+  map.getCanvas().style.cursor = driftSelectionActive
+    ? 'crosshair'
+    : '';
+  renderDriftControls();
+});
+
+
+driftClearButton?.addEventListener('click', () => {
+  clearDriftForecast();
+});
+
+
+driftRunButton?.addEventListener('click', () => {
+  void runDriftForecast();
+});
+
 
 function createCurrentArrowImage() {
   const size = 96;
@@ -1189,30 +2219,16 @@ function currentLayerVisible() {
 }
 
 function setCurrentLayerVisibility(visible) {
-  const visibility = visible
-    ? 'visible'
-    : 'none';
-
-  for (const layerId of [
-    'ocean-currents-points',
-    'ocean-currents-arrows',
-  ]) {
-    if (map.getLayer(layerId)) {
-      map.setLayoutProperty(
-        layerId,
-        'visibility',
-        visibility,
-      );
-    }
+  if (!visible) {
+    currentParticleEngine?.stop();
   }
 
-  if (!visible && currentsPopup) {
-    currentsPopup.remove();
-    currentsPopup = null;
-  }
+  syncCurrentVisualization();
 }
 
 function renderCurrentsStatus() {
+  renderLongTaskUX();
+
   if (!currentsNote) return;
 
   currentsNote.classList.toggle(
@@ -1435,6 +2451,11 @@ function installCurrentLayer() {
     'click',
     'ocean-currents-arrows',
     (event) => {
+      if (
+        driftSelectionActive
+        || driftSelectionJustConsumed
+      ) return;
+
       const feature = event.features?.[0];
 
       if (!feature) return;
@@ -1462,10 +2483,11 @@ function installCurrentLayer() {
 }
 
 async function refreshCurrents() {
-  if (!currentLayerVisible()) return;
+  if (!currentLayerVisible() || currentsLoading) return;
 
   currentsLoading = true;
   currentsErrorMessage = '';
+  startLongTask('currents');
   renderCurrentsStatus();
 
   try {
@@ -1485,6 +2507,12 @@ async function refreshCurrents() {
       );
     }
 
+    if (currentParticleEngine) {
+      currentParticleEngine.setField(
+        payload,
+      );
+    }
+
     setCurrentLayerVisibility(true);
   } catch (error) {
     console.error(
@@ -1499,6 +2527,7 @@ async function refreshCurrents() {
     }
   } finally {
     currentsLoading = false;
+    stopLongTask('currents');
     renderCurrentsStatus();
   }
 }
@@ -1513,6 +2542,49 @@ currentsToggle?.addEventListener(
       setCurrentLayerVisibility(false);
       renderCurrentsStatus();
     }
+  },
+);
+
+
+document.addEventListener(
+  'visibilitychange',
+  () => {
+    syncCurrentVisualization();
+  },
+);
+
+
+map.on(
+  'movestart',
+  () => {
+    mapIsMoving = true;
+    currentParticleEngine?.stop();
+  },
+);
+
+
+map.on(
+  'move',
+  () => {
+    currentParticleEngine?.clear();
+  },
+);
+
+
+map.on(
+  'moveend',
+  () => {
+    mapIsMoving = false;
+    currentParticleEngine?.resize();
+    syncCurrentVisualization();
+  },
+);
+
+
+map.on(
+  'resize',
+  () => {
+    currentParticleEngine?.resize();
   },
 );
 
@@ -1619,6 +2691,9 @@ function applyLanguage(language) {
   syncGroupMarkers();
   refreshSelectedPanel();
   renderCurrentsStatus();
+  renderCurrentDisplayControls();
+  renderLongTaskUX();
+  renderDriftControls();
 
   if (currentsPopup) {
     currentsPopup.remove();
@@ -1707,6 +2782,11 @@ function installEventLayer() {
   });
 
   map.on('click', 'monitor-events', (event) => {
+    if (
+      driftSelectionActive
+      || driftSelectionJustConsumed
+    ) return;
+
     const feature = event.features?.[0];
     const eventId = feature?.properties?.id;
     const monitorEvent = eventsById.get(eventId);
@@ -1751,10 +2831,41 @@ async function refreshEvents() {
   }
 }
 
+map.on('click', (event) => {
+  if (!driftSelectionActive) {
+    return;
+  }
+
+  driftSeed = {
+    longitude: event.lngLat.lng,
+    latitude: event.lngLat.lat,
+  };
+  driftSelectionActive = false;
+  driftSelectionJustConsumed = true;
+
+  window.setTimeout(
+    () => {
+      driftSelectionJustConsumed = false;
+    },
+    0,
+  );
+  driftPayload = null;
+  driftErrorMessage = '';
+  map.getCanvas().style.cursor = '';
+
+  renderDriftMap();
+  renderDriftControls();
+});
+
+
 map.on('load', () => {
+  installRegionalFocus(map);
   installEventLayer();
   installCurrentLayer();
+  installDriftLayer();
   renderCurrentsStatus();
+  renderCurrentDisplayControls();
+  renderDriftControls();
 
   void refreshEvents();
 

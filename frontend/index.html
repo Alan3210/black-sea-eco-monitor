@@ -178,6 +178,27 @@
               Copernicus Marine · почасовая модель
             </div>
 
+            <div
+              id="currents-long-task"
+              class="long-task long-task--currents"
+              aria-live="polite"
+              hidden
+            >
+              <div class="long-task__head">
+                <span class="long-task__spinner" aria-hidden="true"></span>
+                <span class="long-task__title" data-i18n="ocean.waitTitle">
+                  Загружаем поле течений
+                </span>
+                <span id="currents-long-task-elapsed" class="long-task__elapsed">0:00</span>
+              </div>
+              <div class="long-task__track" aria-hidden="true">
+                <span class="long-task__bar"></span>
+              </div>
+              <div id="currents-long-task-message" class="long-task__message">
+                Copernicus может отвечать 30–120 секунд. Картой можно продолжать пользоваться.
+              </div>
+            </div>
+
             <div class="current-size-control">
               <div class="current-size-control__header">
                 <span data-i18n="ocean.arrowSize">
@@ -204,7 +225,207 @@
                 aria-label="Размер стрелок течений"
               />
             </div>
+
+            <div class="ocean-display-control">
+              <div
+                class="current-size-control__header"
+                data-i18n="ocean.displayMode"
+              >
+                Отображение
+              </div>
+
+              <div
+                class="ocean-mode-grid"
+                role="radiogroup"
+                aria-label="Режим отображения течений"
+                data-i18n-aria-label="ocean.displayModeAria"
+              >
+                <label>
+                  <input
+                    type="radio"
+                    name="current-display-mode"
+                    value="arrows"
+                    checked
+                  />
+                  <span data-i18n="ocean.modeArrows">Стрелки</span>
+                </label>
+
+                <label>
+                  <input
+                    type="radio"
+                    name="current-display-mode"
+                    value="particles"
+                  />
+                  <span data-i18n="ocean.modeParticles">Частицы</span>
+                </label>
+
+                <label>
+                  <input
+                    type="radio"
+                    name="current-display-mode"
+                    value="both"
+                  />
+                  <span data-i18n="ocean.modeBoth">Стрелки + частицы</span>
+                </label>
+              </div>
+            </div>
+
+            <div
+              id="particle-controls"
+              class="particle-controls"
+            >
+              <div class="current-size-control">
+                <div class="current-size-control__header">
+                  <span data-i18n="ocean.particleCount">
+                    Количество частиц
+                  </span>
+                  <output
+                    id="particle-count-value"
+                    class="current-size-control__value"
+                    for="particle-count"
+                  >
+                    1800
+                  </output>
+                </div>
+
+                <input
+                  id="particle-count"
+                  class="current-size-control__slider"
+                  type="range"
+                  min="600"
+                  max="3000"
+                  step="100"
+                  value="1800"
+                  data-i18n-aria-label="ocean.particleCountAria"
+                  aria-label="Количество частиц течений"
+                />
+              </div>
+
+              <div class="current-size-control">
+                <div class="current-size-control__header">
+                  <span data-i18n="ocean.particleSpeed">
+                    Скорость анимации
+                  </span>
+                  <output
+                    id="particle-speed-value"
+                    class="current-size-control__value"
+                    for="particle-speed"
+                  >
+                    100%
+                  </output>
+                </div>
+
+                <input
+                  id="particle-speed"
+                  class="current-size-control__slider"
+                  type="range"
+                  min="50"
+                  max="200"
+                  step="10"
+                  value="100"
+                  data-i18n-aria-label="ocean.particleSpeedAria"
+                  aria-label="Скорость анимации течений"
+                />
+              </div>
+
+              <div class="current-size-control">
+                <div class="current-size-control__header">
+                  <span data-i18n="ocean.particleTrail">
+                    Длина следа
+                  </span>
+                  <output
+                    id="particle-trail-value"
+                    class="current-size-control__value"
+                    for="particle-trail"
+                  >
+                    70%
+                  </output>
+                </div>
+
+                <input
+                  id="particle-trail"
+                  class="current-size-control__slider"
+                  type="range"
+                  min="10"
+                  max="100"
+                  step="10"
+                  value="70"
+                  data-i18n-aria-label="ocean.particleTrailAria"
+                  aria-label="Длина следа частиц течений"
+                />
+              </div>
+            </div>
           </div>
+
+            <div class="drift-control">
+              <div class="drift-control__title" data-i18n="drift.title">
+                ПРОГНОЗ ДРЕЙФА
+              </div>
+
+              <div id="drift-status" class="filter-note drift-control__status" aria-live="polite">
+                Выберите точку на карте для прогноза переноса загрязнения.
+              </div>
+
+              <div
+                id="drift-long-task"
+                class="long-task long-task--drift"
+                aria-live="polite"
+                hidden
+              >
+                <div class="long-task__head">
+                  <span class="long-task__spinner" aria-hidden="true"></span>
+                  <span class="long-task__title" data-i18n="drift.waitTitle">
+                    Рассчитываем прогноз OpenDrift
+                  </span>
+                  <span id="drift-long-task-elapsed" class="long-task__elapsed">0:00</span>
+                </div>
+                <div class="long-task__track" aria-hidden="true">
+                  <span class="long-task__bar"></span>
+                </div>
+                <div id="drift-long-task-message" class="long-task__message">
+                  Расчёт обычно занимает 1–3 минуты. Картой можно продолжать пользоваться.
+                </div>
+              </div>
+
+              <div class="drift-control__buttons">
+                <button id="drift-pick-point" class="drift-button" type="button" data-i18n="drift.pickPoint">
+                  Выбрать точку
+                </button>
+                <button id="drift-clear" class="drift-button drift-button--secondary" type="button" data-i18n="drift.clear">
+                  Очистить
+                </button>
+              </div>
+
+              <div id="drift-coordinate" class="drift-coordinate">—</div>
+
+              <div class="current-size-control__header drift-control__subhead" data-i18n="drift.horizon">
+                Горизонт прогноза
+              </div>
+
+              <div class="drift-horizon-grid" role="radiogroup" aria-label="Горизонт прогноза дрейфа" data-i18n-aria-label="drift.horizonAria">
+                <label><input type="radio" name="drift-horizon" value="6" /><span data-i18n="drift.hours6">6 ч</span></label>
+                <label><input type="radio" name="drift-horizon" value="12" /><span data-i18n="drift.hours12">12 ч</span></label>
+                <label><input type="radio" name="drift-horizon" value="24" checked /><span data-i18n="drift.hours24">24 ч</span></label>
+                <label><input type="radio" name="drift-horizon" value="48" /><span data-i18n="drift.hours48">48 ч</span></label>
+                <label><input type="radio" name="drift-horizon" value="72" /><span data-i18n="drift.hours72">72 ч</span></label>
+              </div>
+
+              <div class="current-size-control drift-particle-control">
+                <div class="current-size-control__header">
+                  <span data-i18n="drift.particles">Частицы модели</span>
+                  <output id="drift-particles-value" class="current-size-control__value" for="drift-particles">300</output>
+                </div>
+                <input id="drift-particles" class="current-size-control__slider" type="range" min="100" max="1000" step="100" value="300" data-i18n-aria-label="drift.particlesAria" aria-label="Количество частиц прогноза дрейфа" />
+              </div>
+
+              <button id="drift-run" class="drift-run-button" type="button" disabled data-i18n="drift.run">
+                Рассчитать прогноз
+              </button>
+
+              <div class="filter-note drift-scope-note" data-i18n="drift.scopeNote">
+                Модель переноса по поверхностным течениям. Ветер, волны и weathering нефти пока не учитываются.
+              </div>
+            </div>
 
           <div class="filter-section">
             <div class="filter-section__title" data-i18n="filters.timeWindow">ПЕРИОД</div>
