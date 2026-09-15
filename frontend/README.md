@@ -1,21 +1,20 @@
-# Black Sea Eco Monitor Web — v0.5
+# Black Sea Eco Monitor Web — v0.6
 
-Adds Data Quality visibility to the operator UI.
+Adds full operator-interface localization with an RU / EN switch.
 
-## New in v0.5
+## New in v0.6
 
-- Reads `location.type`, `location.confidence`, and `location.source` from the canonical Monitor API.
-- Reads `time.incident_time`, `time.detection_time`, and `time.source_time`.
-- Event Details now separates event confidence from location confidence.
-- Adds a Location Quality section with location type, map scope, and coordinate source.
-- Canonical database coordinates are explicitly labeled as representative map points, not exact incident coordinates.
-- Timeline shows incident time, source publication time, detection time, first seen, and latest time.
-- Time-window filtering now prefers:
-  1. incident time
-  2. source time
-  3. detection time
-  4. legacy last-seen / updated / first-seen timestamps
-- Co-located incident grouping remains unchanged.
+- Russian is the default interface language.
+- RU / EN switch in the top bar.
+- Selected language is persisted in browser local storage.
+- Static UI labels, filters, categories, statuses, severity, legends, panel labels,
+  connection state, grouped incident UI, evidence actions, coordinate-quality notes,
+  and canonical location names are localized.
+- Dates and clock formatting follow the selected locale.
+- Canonical event/source content is not machine-translated: source headlines and source
+  names stay exactly as provided by the Monitor API.
+- Map control tooltips are localized too.
+- Data Quality UI from v0.5 remains intact.
 
 Run:
 
@@ -24,13 +23,16 @@ npm test
 npm run build
 ```
 
-Expected tests: 17 passed.
+Expected tests: 22 passed.
 
-Then use the project-level launcher:
+Then launch with the project-level launcher:
 
 ```text
 START_MONITOR.cmd
 ```
 
-Open any incident in the right-side Event Details panel and verify the new
-`LOCATION QUALITY` and expanded `TIMELINE` sections.
+Verify:
+1. Russian is selected on first load.
+2. Switching to EN updates the interface immediately.
+3. Reloading the page preserves the selected language.
+4. Open event/group panels in both languages.

@@ -23,6 +23,15 @@ import {
   groupCoLocatedEvents,
 } from './coLocatedEvents.js';
 
+import {
+  formatEventCount,
+  loadStoredLanguage,
+  localeForLanguage,
+  localizeLocationName,
+  saveLanguage,
+  t,
+} from './i18n.js';
+
 const REFRESH_INTERVAL_MS = 60_000;
 
 const statusDot = document.getElementById('connection-dot');
@@ -30,6 +39,9 @@ const connectionLabel = document.getElementById('connection-label');
 const updateLabel = document.getElementById('update-label');
 const eventCount = document.getElementById('event-count');
 const resetFiltersButton = document.getElementById('reset-filters');
+const languageButtons = [
+  ...document.querySelectorAll('[data-language]'),
+];
 
 const eventPanel = document.getElementById('event-panel');
 const eventPanelContent = document.getElementById('event-panel-content');
@@ -56,6 +68,9 @@ let visibleEvents = [];
 let visibleGroups = [];
 let groupMarkers = [];
 let lastSuccessfulUpdate = null;
+let connectionState = 'loading';
+let connectionErrorMessage = '';
+let currentLanguage = loadStoredLanguage();
 
 let selectedEventId = null;
 let selectedGroupId = null;
@@ -98,18 +113,82 @@ map.addControl(
   'bottom-right',
 );
 
-function setConnectionState(state, message, subline) {
-  statusDot.className = `status-dot status-dot--${state}`;
-  connectionLabel.textContent = message;
-  updateLabel.textContent = subline;
+function renderConnectionState() {
+  statusDot.className = `status-dot status-dot--${connectionState}`;
+
+  if (connectionState === 'ok') {
+    connectionLabel.textContent = t(
+      currentLanguage,
+      'connection.online',
+    );
+    updateLabel.textContent = t(
+      currentLanguage,
+      'connection.updated',
+      {
+        time: lastSuccessfulUpdate
+          ? formatClock(lastSuccessfulUpdate)
+          : '—',
+      },
+    );
+    return;
+  }
+
+  if (connectionState === 'warning') {
+    connectionLabel.textContent = t(
+      currentLanguage,
+      'connection.offline',
+    );
+    updateLabel.textContent = t(
+      currentLanguage,
+      'connection.lastKnown',
+      {
+        time: lastSuccessfulUpdate
+          ? formatClock(lastSuccessfulUpdate)
+          : '—',
+      },
+    );
+    return;
+  }
+
+  if (connectionState === 'error') {
+    connectionLabel.textContent = t(
+      currentLanguage,
+      'connection.unavailable',
+    );
+    updateLabel.textContent =
+      connectionErrorMessage
+      || t(currentLanguage, 'connection.waiting');
+    return;
+  }
+
+  connectionLabel.textContent = t(
+    currentLanguage,
+    'connection.connecting',
+  );
+  updateLabel.textContent = t(
+    currentLanguage,
+    'connection.waiting',
+  );
+}
+
+function setConnectionState(
+  state,
+  errorMessage = '',
+) {
+  connectionState = state;
+  connectionErrorMessage = errorMessage;
+  renderConnectionState();
 }
 
 function formatClock(date) {
-  return date.toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  return date.toLocaleTimeString(
+    localeForLanguage(currentLanguage),
+    {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    },
+  );
 }
 
 function readFilterState() {
@@ -131,14 +210,11 @@ function readFilterState() {
 }
 
 function updateEventCount() {
-  if (visibleEvents.length === allEvents.length) {
-    eventCount.textContent =
-      `${visibleEvents.length} ${visibleEvents.length === 1 ? 'event' : 'events'}`;
-    return;
-  }
-
-  eventCount.textContent =
-    `${visibleEvents.length} of ${allEvents.length} events`;
+  eventCount.textContent = formatEventCount(
+    visibleEvents.length,
+    allEvents.length,
+    currentLanguage,
+  );
 }
 
 function getVisibleGroup(groupId) {
@@ -191,7 +267,17 @@ function createGroupMarker(group) {
   button.className = 'colocated-marker';
   button.setAttribute(
     'aria-label',
-    `${group.count} incidents at ${group.locationName}`,
+    t(
+      currentLanguage,
+      'map.groupAria',
+      {
+        count: group.count,
+        location: localizeLocationName(
+          group.locationName,
+          currentLanguage,
+        ),
+      },
+    ),
   );
 
   const count = document.createElement('span');
@@ -200,7 +286,10 @@ function createGroupMarker(group) {
 
   const caption = document.createElement('span');
   caption.className = 'colocated-marker__caption';
-  caption.textContent = 'INCIDENTS';
+  caption.textContent = t(
+    currentLanguage,
+    'map.incidentsShort',
+  );
 
   button.append(count, caption);
 
@@ -381,7 +470,7 @@ function renderEvidenceRows(container, rows) {
       makeElement(
         'div',
         'evidence-empty',
-        'No evidence records.',
+        t(currentLanguage, 'panel.noEvidence'),
       ),
     );
     return;
@@ -393,15 +482,20 @@ function renderEvidenceRows(container, rows) {
     const title = makeElement(
       'div',
       'detail-evidence__title',
-      evidence.title || 'Untitled source',
+      evidence.title
+        || t(currentLanguage, 'panel.untitledSource'),
     );
 
     const meta = makeElement(
       'div',
       'detail-evidence__meta',
       [
-        evidence.source || 'Unknown source',
-        formatEventDate(evidence.published_at),
+        evidence.source
+          || t(currentLanguage, 'panel.unknownSource'),
+        formatEventDate(
+          evidence.published_at,
+          currentLanguage,
+        ),
       ].join(' · '),
     );
 
@@ -413,7 +507,7 @@ function renderEvidenceRows(container, rows) {
       const link = makeElement(
         'a',
         'detail-evidence__link',
-        'Open source ↗',
+        t(currentLanguage, 'panel.openSource'),
       );
 
       link.href = safeUrl;
@@ -455,7 +549,11 @@ function makeBackToGroupButton(group) {
   const button = makeElement(
     'button',
     'detail-back',
-    `← ${group.count} incidents at this point`,
+    t(
+      currentLanguage,
+      'group.back',
+      { count: formatEventCount(group.count, group.count, currentLanguage) },
+    ),
   );
 
   button.type = 'button';
@@ -469,7 +567,7 @@ function makeBackToGroupButton(group) {
 
 function renderEventPanel(event, originGroupId = null) {
   const token = ++panelRenderToken;
-  const vm = eventDetailsViewModel(event);
+  const vm = eventDetailsViewModel(event, currentLanguage);
 
   eventPanelContent.replaceChildren();
 
@@ -536,10 +634,22 @@ function renderEventPanel(event, originGroupId = null) {
   );
 
   metrics.append(
-    makeMetric('EVENT CONFIDENCE', vm.confidence),
-    makeMetric('LOCATION CONFIDENCE', vm.locationConfidence),
-    makeMetric('EVIDENCE', String(vm.evidenceCount)),
-    makeMetric('COORDINATES', vm.coordinates),
+    makeMetric(
+      t(currentLanguage, 'panel.eventConfidence'),
+      vm.confidence,
+    ),
+    makeMetric(
+      t(currentLanguage, 'panel.locationConfidence'),
+      vm.locationConfidence,
+    ),
+    makeMetric(
+      t(currentLanguage, 'panel.evidence'),
+      String(vm.evidenceCount),
+    ),
+    makeMetric(
+      t(currentLanguage, 'panel.coordinates'),
+      vm.coordinates,
+    ),
   );
 
   const locationQuality = makeElement(
@@ -551,7 +661,7 @@ function renderEventPanel(event, originGroupId = null) {
     makeElement(
       'div',
       'detail-section__title',
-      'LOCATION QUALITY',
+      t(currentLanguage, 'panel.locationQuality'),
     ),
   );
 
@@ -561,9 +671,18 @@ function renderEventPanel(event, originGroupId = null) {
   );
 
   locationQualityGrid.append(
-    makeMetric('LOCATION TYPE', vm.locationType),
-    makeMetric('MAP SCOPE', vm.locationScope),
-    makeMetric('COORDINATE SOURCE', vm.coordinateSource),
+    makeMetric(
+      t(currentLanguage, 'panel.locationType'),
+      vm.locationType,
+    ),
+    makeMetric(
+      t(currentLanguage, 'panel.mapScope'),
+      vm.locationScope,
+    ),
+    makeMetric(
+      t(currentLanguage, 'panel.coordinateSource'),
+      vm.coordinateSource,
+    ),
   );
 
   const qualityNote = makeElement(
@@ -586,7 +705,7 @@ function renderEventPanel(event, originGroupId = null) {
     makeElement(
       'div',
       'detail-section__title',
-      'TIMELINE',
+      t(currentLanguage, 'panel.timeline'),
     ),
   );
 
@@ -596,11 +715,26 @@ function renderEventPanel(event, originGroupId = null) {
   );
 
   timelineGrid.append(
-    makeMetric('INCIDENT TIME', vm.incidentTime),
-    makeMetric('SOURCE TIME', vm.sourceTime),
-    makeMetric('DETECTED', vm.detectionTime),
-    makeMetric('FIRST SEEN', vm.firstSeen),
-    makeMetric('LATEST', vm.lastSeen),
+    makeMetric(
+      t(currentLanguage, 'panel.incidentTime'),
+      vm.incidentTime,
+    ),
+    makeMetric(
+      t(currentLanguage, 'panel.sourceTime'),
+      vm.sourceTime,
+    ),
+    makeMetric(
+      t(currentLanguage, 'panel.detected'),
+      vm.detectionTime,
+    ),
+    makeMetric(
+      t(currentLanguage, 'panel.firstSeen'),
+      vm.firstSeen,
+    ),
+    makeMetric(
+      t(currentLanguage, 'panel.latest'),
+      vm.lastSeen,
+    ),
   );
 
   timeline.append(timelineGrid);
@@ -613,7 +747,11 @@ function renderEventPanel(event, originGroupId = null) {
   const evidenceHeading = makeElement(
     'div',
     'detail-section__title',
-    `EVIDENCE · ${vm.evidenceCount}`,
+    t(
+      currentLanguage,
+      'panel.evidenceHeading',
+      { count: vm.evidenceCount },
+    ),
   );
 
   const evidenceList = makeElement(
@@ -625,7 +763,7 @@ function renderEventPanel(event, originGroupId = null) {
     makeElement(
       'div',
       'evidence-loading',
-      'Loading sources…',
+      t(currentLanguage, 'panel.loadingSources'),
     ),
   );
 
@@ -678,14 +816,18 @@ function renderEventPanel(event, originGroupId = null) {
         makeElement(
           'div',
           'evidence-error',
-          `Evidence unavailable: ${error.message}`,
+          t(
+            currentLanguage,
+            'panel.evidenceUnavailable',
+            { message: error.message },
+          ),
         ),
       );
     });
 }
 
 function makeGroupEventCard(event, group) {
-  const vm = eventDetailsViewModel(event);
+  const vm = eventDetailsViewModel(event, currentLanguage);
 
   const card = makeElement(
     'button',
@@ -727,7 +869,15 @@ function makeGroupEventCard(event, group) {
   const meta = makeElement(
     'div',
     'group-event-card__meta',
-    `${vm.severity} severity · ${vm.confidence} confidence · ${vm.evidenceCount} evidence`,
+    t(
+      currentLanguage,
+      'group.cardMeta',
+      {
+        severity: vm.severity,
+        confidence: vm.confidence,
+        evidence: vm.evidenceCount,
+      },
+    ),
   );
 
   card.append(top, title, meta);
@@ -751,19 +901,32 @@ function renderGroupPanel(group) {
   const kicker = makeElement(
     'div',
     'group-detail-kicker',
-    'CO-LOCATED INCIDENTS',
+    t(currentLanguage, 'group.kicker'),
   );
 
   const location = makeElement(
     'h2',
     'detail-location',
-    group.locationName,
+    localizeLocationName(
+      group.locationName,
+      currentLanguage,
+    ),
   );
 
   const summary = makeElement(
     'div',
     'detail-headline',
-    `${group.count} incidents share this canonical map point. Select one to inspect its evidence and lifecycle.`,
+    t(
+      currentLanguage,
+      'group.summary',
+      {
+        count: formatEventCount(
+          group.count,
+          group.count,
+          currentLanguage,
+        ),
+      },
+    ),
   );
 
   header.append(
@@ -866,6 +1029,120 @@ document.addEventListener(
   },
 );
 
+
+function localizeStaticDom() {
+  document.documentElement.lang = currentLanguage;
+  document.title = t(
+    currentLanguage,
+    'site.title',
+  );
+
+  const metaDescription = document.getElementById(
+    'meta-description',
+  );
+
+  if (metaDescription) {
+    metaDescription.setAttribute(
+      'content',
+      t(
+        currentLanguage,
+        'site.description',
+      ),
+    );
+  }
+
+  for (const element of document.querySelectorAll('[data-i18n]')) {
+    element.textContent = t(
+      currentLanguage,
+      element.dataset.i18n,
+    );
+  }
+
+  for (const element of document.querySelectorAll('[data-i18n-aria-label]')) {
+    element.setAttribute(
+      'aria-label',
+      t(
+        currentLanguage,
+        element.dataset.i18nAriaLabel,
+      ),
+    );
+  }
+
+  for (const button of languageButtons) {
+    const language = button.dataset.language;
+    const selected = language === currentLanguage;
+
+    button.classList.toggle(
+      'language-switch__button--active',
+      selected,
+    );
+
+    button.setAttribute(
+      'aria-pressed',
+      String(selected),
+    );
+
+    button.title = t(
+      currentLanguage,
+      language === 'ru'
+        ? 'language.ru'
+        : 'language.en',
+    );
+  }
+}
+
+function localizeMapControls() {
+  const controls = [
+    [
+      '.maplibregl-ctrl-zoom-in',
+      'map.zoomIn',
+    ],
+    [
+      '.maplibregl-ctrl-zoom-out',
+      'map.zoomOut',
+    ],
+    [
+      '.maplibregl-ctrl-compass',
+      'map.resetBearing',
+    ],
+    [
+      '.maplibregl-ctrl-attrib-button',
+      'map.attribution',
+    ],
+  ];
+
+  for (const [selector, key] of controls) {
+    const element = document.querySelector(selector);
+
+    if (!element) continue;
+
+    const label = t(currentLanguage, key);
+    element.title = label;
+    element.setAttribute('aria-label', label);
+  }
+}
+
+function applyLanguage(language) {
+  currentLanguage = saveLanguage(language);
+
+  localizeStaticDom();
+  localizeMapControls();
+  renderConnectionState();
+  updateEventCount();
+  syncGroupMarkers();
+  refreshSelectedPanel();
+}
+
+for (const button of languageButtons) {
+  button.addEventListener('click', () => {
+    applyLanguage(
+      button.dataset.language,
+    );
+  });
+}
+
+applyLanguage(currentLanguage);
+
 function installEventLayer() {
   map.addSource('monitor-events', {
     type: 'geojson',
@@ -962,11 +1239,7 @@ async function refreshEvents() {
 
     applyFilters();
 
-    setConnectionState(
-      'ok',
-      'Monitor online',
-      `Updated ${formatClock(lastSuccessfulUpdate)}`,
-    );
+    setConnectionState('ok');
   } catch (error) {
     console.error(
       '[Black Sea Eco Monitor]',
@@ -974,17 +1247,12 @@ async function refreshEvents() {
     );
 
     if (allEvents.length && lastSuccessfulUpdate) {
-      setConnectionState(
-        'warning',
-        'Monitor offline',
-        `Showing last known data · Updated ${formatClock(lastSuccessfulUpdate)}`,
-      );
+      setConnectionState('warning');
       return;
     }
 
     setConnectionState(
       'error',
-      'Monitor unavailable',
       error.message,
     );
   }

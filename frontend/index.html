@@ -1,135 +1,185 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
+      id="meta-description"
       name="description"
-      content="Black Sea Eco Monitor — environmental incidents map"
+      content="Карта экологических происшествий в Черноморском регионе"
     />
-    <title>Black Sea Eco Monitor</title>
+    <title>Экомонитор Чёрного моря</title>
   </head>
   <body>
     <div id="app">
       <header class="topbar">
         <div>
-          <div class="eyebrow">ENVIRONMENTAL INTELLIGENCE</div>
-          <h1>Black Sea Eco Monitor</h1>
+          <div class="eyebrow" data-i18n="site.eyebrow">
+            ЭКОЛОГИЧЕСКАЯ АНАЛИТИКА
+          </div>
+          <h1 data-i18n="site.title">Экомонитор Чёрного моря</h1>
         </div>
 
-        <div class="monitor-status" aria-live="polite">
-          <span id="connection-dot" class="status-dot status-dot--loading"></span>
-          <div>
-            <div id="connection-label">Connecting…</div>
-            <div id="update-label" class="status-subline">Waiting for API</div>
+        <div class="topbar-actions">
+          <div
+            id="language-switch"
+            class="language-switch"
+            role="group"
+            aria-label="Язык интерфейса"
+            data-i18n-aria-label="language.label"
+          >
+            <button
+              class="language-switch__button"
+              type="button"
+              data-language="ru"
+              aria-pressed="true"
+              title="Русский"
+            >
+              RU
+            </button>
+            <button
+              class="language-switch__button"
+              type="button"
+              data-language="en"
+              aria-pressed="false"
+              title="English"
+            >
+              EN
+            </button>
+          </div>
+
+          <div class="monitor-status" aria-live="polite">
+            <span id="connection-dot" class="status-dot status-dot--loading"></span>
+            <div>
+              <div id="connection-label">Подключение…</div>
+              <div id="update-label" class="status-subline">Ожидание API</div>
+            </div>
           </div>
         </div>
       </header>
 
       <main class="map-shell">
-        <div id="map" aria-label="Black Sea environmental events map"></div>
+        <div
+          id="map"
+          aria-label="Карта экологических происшествий Черноморского региона"
+          data-i18n-aria-label="map.aria"
+        ></div>
 
-        <aside class="filter-panel" aria-label="Event filters">
+        <aside
+          class="filter-panel"
+          aria-label="Фильтры событий"
+          data-i18n-aria-label="filters.aria"
+        >
           <div class="filter-panel__head">
             <div>
-              <div class="filter-kicker">FILTERS</div>
-              <div class="filter-title">Incident view</div>
+              <div class="filter-kicker" data-i18n="filters.kicker">ФИЛЬТРЫ</div>
+              <div class="filter-title" data-i18n="filters.title">События</div>
             </div>
-            <button id="reset-filters" class="filter-reset" type="button">
-              Reset
+            <button
+              id="reset-filters"
+              class="filter-reset"
+              type="button"
+              data-i18n="filters.reset"
+            >
+              Сбросить
             </button>
           </div>
 
           <div class="filter-section">
-            <div class="filter-section__title">STATUS</div>
+            <div class="filter-section__title" data-i18n="filters.status">СТАТУС</div>
             <label class="filter-check">
               <input type="checkbox" data-status="detected" checked />
-              <span>Detected</span>
+              <span data-i18n="status.detected">Обнаружено</span>
             </label>
             <label class="filter-check">
               <input type="checkbox" data-status="active" checked />
-              <span>Active</span>
+              <span data-i18n="status.active">Активно</span>
             </label>
             <label class="filter-check">
               <input type="checkbox" data-status="contained" checked />
-              <span>Contained</span>
+              <span data-i18n="status.contained">Локализовано</span>
             </label>
             <label class="filter-check">
               <input type="checkbox" data-status="resolved" checked />
-              <span>Resolved</span>
+              <span data-i18n="status.resolved">Завершено</span>
             </label>
           </div>
 
           <div class="filter-section">
-            <div class="filter-section__title">CATEGORY</div>
+            <div class="filter-section__title" data-i18n="filters.category">КАТЕГОРИЯ</div>
             <label class="filter-check">
               <input type="checkbox" data-category="wildfire" checked />
               <span class="filter-dot" style="--filter-color:#ff9f43"></span>
-              <span>Wildfire</span>
+              <span data-i18n="category.wildfire">Лесной пожар</span>
             </label>
             <label class="filter-check">
               <input type="checkbox" data-category="industrial_fire" checked />
               <span class="filter-dot" style="--filter-color:#ff5d5d"></span>
-              <span>Industrial fire</span>
+              <span data-i18n="category.industrial_fire">Промышленный пожар</span>
             </label>
             <label class="filter-check">
               <input type="checkbox" data-category="oil_spill" checked />
               <span class="filter-dot" style="--filter-color:#6f8cff"></span>
-              <span>Oil spill</span>
+              <span data-i18n="category.oil_spill">Разлив нефти</span>
             </label>
             <label class="filter-check">
               <input type="checkbox" data-category="water_pollution" checked />
               <span class="filter-dot" style="--filter-color:#46d7c8"></span>
-              <span>Water pollution</span>
+              <span data-i18n="category.water_pollution">Загрязнение воды</span>
             </label>
 
             <details class="more-categories">
-              <summary>More categories</summary>
+              <summary data-i18n="filters.moreCategories">Другие категории</summary>
               <label class="filter-check">
                 <input type="checkbox" data-category="algae_bloom" checked />
                 <span class="filter-dot" style="--filter-color:#8bd96b"></span>
-                <span>Algae bloom</span>
+                <span data-i18n="category.algae_bloom">Цветение водорослей</span>
               </label>
               <label class="filter-check">
                 <input type="checkbox" data-category="marine_animal_death" checked />
                 <span class="filter-dot" style="--filter-color:#bd7cff"></span>
-                <span>Marine animal death</span>
+                <span data-i18n="category.marine_animal_death">Гибель морских животных</span>
               </label>
               <label class="filter-check">
                 <input type="checkbox" data-category="chemical_release" checked />
                 <span class="filter-dot" style="--filter-color:#f2d95c"></span>
-                <span>Chemical release</span>
+                <span data-i18n="category.chemical_release">Химический выброс</span>
               </label>
               <label class="filter-check">
                 <input type="checkbox" data-category="storm_damage" checked />
                 <span class="filter-dot" style="--filter-color:#84b6ff"></span>
-                <span>Storm damage</span>
+                <span data-i18n="category.storm_damage">Штормовой ущерб</span>
               </label>
             </details>
           </div>
 
           <div class="filter-section">
-            <div class="filter-section__title">TIME WINDOW</div>
-            <div class="time-segmented" role="radiogroup" aria-label="Time window">
+            <div class="filter-section__title" data-i18n="filters.timeWindow">ПЕРИОД</div>
+            <div
+              class="time-segmented"
+              role="radiogroup"
+              aria-label="Период времени"
+              data-i18n-aria-label="filters.timeWindowAria"
+            >
               <label>
                 <input type="radio" name="time-window" value="1" />
-                <span>24H</span>
+                <span data-i18n="filters.24h">24 Ч</span>
               </label>
               <label>
                 <input type="radio" name="time-window" value="7" checked />
-                <span>7D</span>
+                <span data-i18n="filters.7d">7 Д</span>
               </label>
               <label>
                 <input type="radio" name="time-window" value="30" />
-                <span>30D</span>
+                <span data-i18n="filters.30d">30 Д</span>
               </label>
               <label>
                 <input type="radio" name="time-window" value="all" />
-                <span>ALL</span>
+                <span data-i18n="filters.all">ВСЁ</span>
               </label>
             </div>
-            <div class="filter-note">
-              Time uses the monitor's latest-seen timestamp.
+            <div class="filter-note" data-i18n="filters.timeNote">
+              Период определяется по времени инцидента, затем публикации и обнаружения.
             </div>
           </div>
         </aside>
@@ -137,41 +187,47 @@
         <aside
           id="event-panel"
           class="event-panel"
-          aria-label="Selected event details"
+          aria-label="Информация о выбранном событии"
+          data-i18n-aria-label="panel.aria"
           aria-hidden="true"
         >
           <button
             id="close-event-panel"
             class="event-panel__close"
             type="button"
-            aria-label="Close event details"
+            aria-label="Закрыть информацию о событии"
+            data-i18n-aria-label="panel.close"
           >
             ×
           </button>
           <div id="event-panel-content"></div>
         </aside>
 
-        <section class="map-legend" aria-label="Event legend">
-          <div class="legend-title">INCIDENTS</div>
+        <section
+          class="map-legend"
+          aria-label="Легенда событий"
+          data-i18n-aria-label="legend.aria"
+        >
+          <div class="legend-title" data-i18n="legend.title">СОБЫТИЯ</div>
           <div class="legend-row">
             <span class="legend-swatch" style="--swatch:#ff5d5d"></span>
-            Industrial fire
+            <span data-i18n="category.industrial_fire">Промышленный пожар</span>
           </div>
           <div class="legend-row">
             <span class="legend-swatch" style="--swatch:#ff9f43"></span>
-            Wildfire
+            <span data-i18n="category.wildfire">Лесной пожар</span>
           </div>
           <div class="legend-row">
             <span class="legend-swatch" style="--swatch:#6f8cff"></span>
-            Oil spill
+            <span data-i18n="category.oil_spill">Разлив нефти</span>
           </div>
           <div class="legend-row">
             <span class="legend-swatch" style="--swatch:#46d7c8"></span>
-            Water pollution
+            <span data-i18n="category.water_pollution">Загрязнение воды</span>
           </div>
         </section>
 
-        <div id="event-count" class="event-count">0 events</div>
+        <div id="event-count" class="event-count">0 событий</div>
       </main>
     </div>
 
