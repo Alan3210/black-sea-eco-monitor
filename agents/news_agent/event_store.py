@@ -1164,6 +1164,532 @@ class EventStore:
 
         return evidence_id
 
+    @staticmethod
+    def _normalize_satellite_choice(
+        value,
+        *,
+        field_name,
+        allowed_values,
+    ):
+        if value not in allowed_values:
+            allowed = ", ".join(sorted(allowed_values))
+            raise ValueError(
+                f"{field_name} must be one of: {allowed}"
+            )
+
+        return value
+
+    @staticmethod
+    def _normalize_satellite_bbox(
+        bbox_min_lon,
+        bbox_min_lat,
+        bbox_max_lon,
+        bbox_max_lat,
+    ):
+        values = (
+            bbox_min_lon,
+            bbox_min_lat,
+            bbox_max_lon,
+            bbox_max_lat,
+        )
+
+        if all(value is None for value in values):
+            return (None, None, None, None)
+
+        if any(value is None for value in values):
+            raise ValueError(
+                "bbox must provide all four values or none"
+            )
+
+        min_lon = float(bbox_min_lon)
+        min_lat = float(bbox_min_lat)
+        max_lon = float(bbox_max_lon)
+        max_lat = float(bbox_max_lat)
+
+        if not -180.0 <= min_lon <= 180.0:
+            raise ValueError(
+                "bbox_min_lon must be between -180 and 180"
+            )
+
+        if not -180.0 <= max_lon <= 180.0:
+            raise ValueError(
+                "bbox_max_lon must be between -180 and 180"
+            )
+
+        if not -90.0 <= min_lat <= 90.0:
+            raise ValueError(
+                "bbox_min_lat must be between -90 and 90"
+            )
+
+        if not -90.0 <= max_lat <= 90.0:
+            raise ValueError(
+                "bbox_max_lat must be between -90 and 90"
+            )
+
+        if min_lon > max_lon:
+            raise ValueError(
+                "bbox_min_lon must not exceed bbox_max_lon"
+            )
+
+        if min_lat > max_lat:
+            raise ValueError(
+                "bbox_min_lat must not exceed bbox_max_lat"
+            )
+
+        return (
+            min_lon,
+            min_lat,
+            max_lon,
+            max_lat,
+        )
+
+    @staticmethod
+    def _satellite_row_to_record(row):
+        import json
+
+        bbox = None
+
+        if any(
+            value is not None
+            for value in row[11:15]
+        ):
+            bbox = {
+                "min_lon": row[11],
+                "min_lat": row[12],
+                "max_lon": row[13],
+                "max_lat": row[14],
+            }
+
+        geometry = (
+            json.loads(row[10])
+            if row[10]
+            else None
+        )
+
+        provenance = (
+            json.loads(row[20])
+            if row[20]
+            else None
+        )
+
+        return {
+            "id": row[0],
+            "information_type": row[1],
+            "derivation_level": row[2],
+            "observation_type": row[3],
+            "sensor": row[4],
+            "platform": row[5],
+            "dataset_id": row[6],
+            "source_image_id": row[7],
+            "acquisition_time": row[8],
+            "processing_time": row[9],
+            "geometry": geometry,
+            "bbox": bbox,
+            "confidence": row[15],
+            "review_status": row[16],
+            "processing_version": row[17],
+            "processing_method": row[18],
+            "cache_reference": row[19],
+            "provenance": provenance,
+            "created_at": row[21],
+            "updated_at": row[22],
+        }
+
+    def create_satellite_observation(
+        self,
+        *,
+        observation_type,
+        sensor,
+        dataset_id,
+        source_image_id,
+        acquisition_time,
+        derivation_level="processed",
+        platform=None,
+        processing_time=None,
+        geometry=None,
+        bbox_min_lon=None,
+        bbox_min_lat=None,
+        bbox_max_lon=None,
+        bbox_max_lat=None,
+        confidence=None,
+        review_status="unreviewed",
+        processing_version="0.1",
+        processing_method=None,
+        cache_reference=None,
+        provenance=None,
+    ):
+        import json
+
+        required_strings = {
+            "observation_type": observation_type,
+            "sensor": sensor,
+            "dataset_id": dataset_id,
+            "source_image_id": source_image_id,
+            "processing_version": processing_version,
+        }
+
+        for field_name, value in required_strings.items():
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"{field_name} must be a non-empty string"
+                )
+
+        derivation_level = self._normalize_satellite_choice(
+            derivation_level,
+            field_name="derivation_level",
+            allowed_values={
+                "raw",
+                "processed",
+                "derived",
+            },
+        )
+
+        review_status = self._normalize_satellite_choice(
+            review_status,
+            field_name="review_status",
+            allowed_values={
+                "unreviewed",
+                "review_required",
+                "reviewed",
+                "rejected",
+            },
+        )
+
+        acquisition_time = self._normalize_optional_datetime(
+            acquisition_time
+        )
+
+        if acquisition_time is None:
+            raise ValueError(
+                "acquisition_time is required"
+            )
+
+        processing_time = self._normalize_optional_datetime(
+            processing_time
+        )
+
+        confidence = self._normalize_confidence(
+            confidence
+        )
+
+        (
+            bbox_min_lon,
+            bbox_min_lat,
+            bbox_max_lon,
+            bbox_max_lat,
+        ) = self._normalize_satellite_bbox(
+            bbox_min_lon,
+            bbox_min_lat,
+            bbox_max_lon,
+            bbox_max_lat,
+        )
+
+        if geometry is not None and not isinstance(
+            geometry,
+            dict,
+        ):
+            raise ValueError(
+                "geometry must be a dict or None"
+            )
+
+        if provenance is not None and not isinstance(
+            provenance,
+            dict,
+        ):
+            raise ValueError(
+                "provenance must be a dict or None"
+            )
+
+        geometry_geojson = (
+            json.dumps(
+                geometry,
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            if geometry is not None
+            else None
+        )
+
+        provenance_json = (
+            json.dumps(
+                provenance,
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            if provenance is not None
+            else None
+        )
+
+        observation_id = (
+            "satobs_" + str(uuid4())
+        )
+
+        now = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO satellite_observations (
+                    id,
+                    information_type,
+                    derivation_level,
+                    observation_type,
+                    sensor,
+                    platform,
+                    dataset_id,
+                    source_image_id,
+                    acquisition_time,
+                    processing_time,
+                    geometry_geojson,
+                    bbox_min_lon,
+                    bbox_min_lat,
+                    bbox_max_lon,
+                    bbox_max_lat,
+                    confidence,
+                    review_status,
+                    processing_version,
+                    processing_method,
+                    cache_reference,
+                    provenance_json,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
+                """,
+                (
+                    observation_id,
+                    "satellite_observation",
+                    derivation_level,
+                    observation_type.strip(),
+                    sensor.strip(),
+                    platform,
+                    dataset_id.strip(),
+                    source_image_id.strip(),
+                    acquisition_time,
+                    processing_time,
+                    geometry_geojson,
+                    bbox_min_lon,
+                    bbox_min_lat,
+                    bbox_max_lon,
+                    bbox_max_lat,
+                    confidence,
+                    review_status,
+                    processing_version.strip(),
+                    processing_method,
+                    cache_reference,
+                    provenance_json,
+                    now,
+                    now,
+                ),
+            )
+
+            connection.commit()
+
+        return observation_id
+
+    def get_satellite_observation(
+        self,
+        observation_id,
+    ):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    information_type,
+                    derivation_level,
+                    observation_type,
+                    sensor,
+                    platform,
+                    dataset_id,
+                    source_image_id,
+                    acquisition_time,
+                    processing_time,
+                    geometry_geojson,
+                    bbox_min_lon,
+                    bbox_min_lat,
+                    bbox_max_lon,
+                    bbox_max_lat,
+                    confidence,
+                    review_status,
+                    processing_version,
+                    processing_method,
+                    cache_reference,
+                    provenance_json,
+                    created_at,
+                    updated_at
+                FROM satellite_observations
+                WHERE id = ?
+                LIMIT 1
+                """,
+                (observation_id,),
+            )
+
+            row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        return self._satellite_row_to_record(
+            row
+        )
+
+    def list_satellite_observations(self):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    information_type,
+                    derivation_level,
+                    observation_type,
+                    sensor,
+                    platform,
+                    dataset_id,
+                    source_image_id,
+                    acquisition_time,
+                    processing_time,
+                    geometry_geojson,
+                    bbox_min_lon,
+                    bbox_min_lat,
+                    bbox_max_lon,
+                    bbox_max_lat,
+                    confidence,
+                    review_status,
+                    processing_version,
+                    processing_method,
+                    cache_reference,
+                    provenance_json,
+                    created_at,
+                    updated_at
+                FROM satellite_observations
+                ORDER BY
+                    acquisition_time DESC,
+                    created_at DESC
+                """
+            )
+
+            rows = cursor.fetchall()
+
+        return [
+            self._satellite_row_to_record(
+                row
+            )
+            for row in rows
+        ]
+
+    def link_satellite_observation_to_event(
+        self,
+        *,
+        event_id,
+        satellite_observation_id,
+        relation_type,
+        relation_confidence=None,
+    ):
+        relation_type = self._normalize_satellite_choice(
+            relation_type,
+            field_name="relation_type",
+            allowed_values={
+                "spatial_overlap",
+                "temporal_match",
+                "contextual",
+                "analyst_linked",
+            },
+        )
+
+        relation_confidence = (
+            self._normalize_confidence(
+                relation_confidence
+            )
+        )
+
+        now = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        with self._connect() as connection:
+            event_exists = connection.execute(
+                """
+                SELECT 1
+                FROM events
+                WHERE id = ?
+                LIMIT 1
+                """,
+                (event_id,),
+            ).fetchone()
+
+            if event_exists is None:
+                raise ValueError(
+                    f"event not found: {event_id}"
+                )
+
+            observation_exists = connection.execute(
+                """
+                SELECT 1
+                FROM satellite_observations
+                WHERE id = ?
+                LIMIT 1
+                """,
+                (satellite_observation_id,),
+            ).fetchone()
+
+            if observation_exists is None:
+                raise ValueError(
+                    "satellite observation not found: "
+                    f"{satellite_observation_id}"
+                )
+
+            existing_link = connection.execute(
+                """
+                SELECT 1
+                FROM event_satellite_observations
+                WHERE event_id = ?
+                  AND satellite_observation_id = ?
+                LIMIT 1
+                """,
+                (
+                    event_id,
+                    satellite_observation_id,
+                ),
+            ).fetchone()
+
+            if existing_link is not None:
+                return False
+
+            connection.execute(
+                """
+                INSERT INTO event_satellite_observations (
+                    event_id,
+                    satellite_observation_id,
+                    relation_type,
+                    relation_confidence,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    event_id,
+                    satellite_observation_id,
+                    relation_type,
+                    relation_confidence,
+                    now,
+                ),
+            )
+
+            connection.commit()
+
+        return True
+
+
     def get_event_evidence(self, event_id):
         with self._connect() as connection:
             cursor = connection.cursor()
