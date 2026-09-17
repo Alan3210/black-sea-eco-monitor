@@ -11,6 +11,10 @@ from backend.api.monitor_events import (
     router as monitor_events_router,
 )
 
+from backend.api.satellite_observations import (
+    router as satellite_observations_router,
+)
+
 from backend.database.database import engine, Base
 from backend.database import models
 
@@ -68,6 +72,14 @@ app.include_router(
 app.include_router(
     impact_router
 )
+
+
+app.include_router(
+    satellite_observations_router,
+    prefix="/satellite/observations",
+    tags=["satellite"],
+)
+
 
 @app.get("/")
 def root():
