@@ -1,0 +1,2451 @@
+===== ocean drift =====
+from __future__ import annotations
+
+import hashlib
+import json
+import math
+import os
+import tempfile
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+from agents.ocean_data.copernicus_currents import (
+    DATASET_ID,
+    MAX_LATITUDE,
+    MAX_LONGITUDE,
+    MIN_LATITUDE,
+    MIN_LONGITUDE,
+    SURFACE_DEPTH_M,
+    normalize_target_time,
+)
+
+
+STANDARD_HORIZONS_HOURS = (6, 12, 24, 48, 72)
+
+DEFAULT_HOURS = 72
+DEFAULT_PARTICLES = 500
+DEFAULT_RADIUS_M = 500.0
+DEFAULT_DIFFUSIVITY_M2_S = 2.0
+DEFAULT_TIME_STEP_SECONDS = 900
+DEFAULT_OUTPUT_STEP_SECONDS = 3600
+DEFAULT_CACHE_TTL_SECONDS = 15 * 60
+FORCING_MARGIN_DEG = 4.0
+
+MIN_PARTICLES = 50
+MAX_PARTICLES = 2000
+MAX_RADIUS_M = 20_000.0
+MAX_DIFFUSIVITY_M2_S = 100.0
+
+
+class OceanDriftError(RuntimeError):
+    pass
+
+
+class OceanDriftInputError(ValueError):
+    pass
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _iso_utc(value: Any) -> str:
+    if hasattr(value, "item"):
+        value = value.item()
+
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        text = str(value)
+
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            return str(value)
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    else:
+        parsed = parsed.astimezone(timezone.utc)
+
+    return parsed.isoformat()
+
+
+def validate_drift_request(
+    *,
+    longitude: float,
+    latitude: float,
+    hours: int,
+    particles: int,
+    radius_m: float,
+    diffusivity_m2_s: float,
+) -> None:
+    if not (
+        MIN_LONGITUDE
+        <= longitude
+        <= MAX_LONGITUDE
+    ):
+        raise OceanDriftInputError(
+            "longitude must be inside the Copernicus Black Sea domain "
+            f"({MIN_LONGITUDE}..{MAX_LONGITUDE})."
+        )
+
+    if not (
+        MIN_LATITUDE
+        <= latitude
+        <= MAX_LATITUDE
+    ):
+        raise OceanDriftInputError(
+            "latitude must be inside the Copernicus Black Sea domain "
+            f"({MIN_LATITUDE}..{MAX_LATITUDE})."
+        )
+
+    if hours not in STANDARD_HORIZONS_HOURS:
+        raise OceanDriftInputError(
+            "hours must be one of: "
+            + ", ".join(
+                str(value)
+                for value in STANDARD_HORIZONS_HOURS
+            )
+            + "."
+        )
+
+    if not (
+        MIN_PARTICLES
+        <= particles
+        <= MAX_PARTICLES
+    ):
+        raise OceanDriftInputError(
+            f"particles must be between {MIN_PARTICLES} "
+            f"and {MAX_PARTICLES}."
+        )
+
+    if not (
+        0
+        <= radius_m
+        <= MAX_RADIUS_M
+    ):
+        raise OceanDriftInputError(
+            f"radius_m must be between 0 and {MAX_RADIUS_M:g}."
+        )
+
+    if not (
+        0
+        <= diffusivity_m2_s
+        <= MAX_DIFFUSIVITY_M2_S
+    ):
+        raise OceanDriftInputError(
+            "diffusivity_m2_s must be between 0 and "
+            f"{MAX_DIFFUSIVITY_M2_S:g}."
+        )
+
+
+def requested_horizons(
+    hours: int,
+) -> tuple[int, ...]:
+    if hours not in STANDARD_HORIZONS_HOURS:
+        raise OceanDriftInputError(
+            "Unsupported forecast horizon."
+        )
+
+    return tuple(
+        value
+        for value in STANDARD_HORIZONS_HOURS
+        if value <= hours
+    )
+
+
+def forcing_bbox(
+    *,
+    longitude: float,
+    latitude: float,
+    margin_deg: float = FORCING_MARGIN_DEG,
+) -> dict[str, float]:
+    return {
+        "west": max(
+            MIN_LONGITUDE,
+            longitude - margin_deg,
+        ),
+        "south": max(
+            MIN_LATITUDE,
+            latitude - margin_deg,
+        ),
+        "east": min(
+            MAX_LONGITUDE,
+            longitude + margin_deg,
+        ),
+        "north": min(
+            MAX_LATITUDE,
+            latitude + margin_deg,
+        ),
+    }
+
+
+def _cache_directory() -> Path:
+    configured = os.getenv(
+        "OCEAN_DRIFT_CACHE_DIR"
+    )
+
+    if configured:
+        return Path(configured)
+
+    return (
+        Path(tempfile.gettempdir())
+        / "black-sea-eco-monitor"
+        / "ocean-drift"
+    )
+
+
+def _cache_key(
+    *,
+    start_time: datetime,
+    longitude: float,
+    latitude: float,
+    hours: int,
+    particles: int,
+    radius_m: float,
+    diffusivity_m2_s: float,
+) -> str:
+    canonical = json.dumps(
+        {
+            "start_time": start_time.isoformat(),
+            "longitude": round(longitude, 6),
+            "latitude": round(latitude, 6),
+            "hours": hours,
+            "particles": particles,
+            "radius_m": round(radius_m, 3),
+            "diffusivity_m2_s": round(
+                diffusivity_m2_s,
+                3,
+            ),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+    return hashlib.sha256(
+        canonical.encode("utf-8")
+    ).hexdigest()[:20]
+
+
+def _cache_path(**kwargs) -> Path:
+    return (
+        _cache_directory()
+        / (
+            "drift_"
+            + _cache_key(**kwargs)
+            + ".json"
+        )
+    )
+
+
+def _read_cache(
+    path: Path,
+    *,
+    ttl_seconds: int,
+) -> dict | None:
+    if not path.exists():
+        return None
+
+    age_seconds = (
+        _utc_now().timestamp()
+        - path.stat().st_mtime
+    )
+
+    if age_seconds > ttl_seconds:
+        return None
+
+    try:
+        return json.loads(
+            path.read_text(
+                encoding="utf-8"
+            )
+        )
+    except (
+        OSError,
+        json.JSONDecodeError,
+    ):
+        return None
+
+
+def _write_cache(
+    path: Path,
+    payload: dict,
+) -> None:
+    try:
+        path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        path.write_text(
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        # Drift simulation must not fail only because cache is unavailable.
+        pass
+
+
+def _open_forcing_dataset(
+    *,
+    start_time: datetime,
+    hours: int,
+    longitude: float,
+    latitude: float,
+):
+    try:
+        import copernicusmarine
+    except ImportError as exc:
+        raise OceanDriftError(
+            "The 'copernicusmarine' package is not installed."
+        ) from exc
+
+    bbox = forcing_bbox(
+        longitude=longitude,
+        latitude=latitude,
+    )
+
+    # One extra model hour gives OpenDrift interpolation room
+    # at the requested simulation endpoint.
+    end_time = (
+        start_time
+        + timedelta(hours=hours + 1)
+    )
+
+    return copernicusmarine.open_dataset(
+        dataset_id=DATASET_ID,
+        variables=["uo", "vo"],
+        minimum_longitude=bbox["west"],
+        maximum_longitude=bbox["east"],
+        minimum_latitude=bbox["south"],
+        maximum_latitude=bbox["north"],
+        start_datetime=start_time.isoformat(),
+        end_datetime=end_time.isoformat(),
+        minimum_depth=SURFACE_DEPTH_M,
+        maximum_depth=SURFACE_DEPTH_M,
+    )
+
+
+def _build_opendrift_reader(
+    dataset,
+):
+    try:
+        from opendrift.readers import (
+            reader_netCDF_CF_generic,
+        )
+    except ImportError as exc:
+        raise OceanDriftError(
+            "OpenDrift is not installed."
+        ) from exc
+
+    # The Copernicus Black Sea dataset exposes uo/vo.
+    # Explicit mapping keeps the integration independent
+    # of optional CF metadata details.
+    return reader_netCDF_CF_generic.Reader(
+        dataset,
+        name="Copernicus Black Sea surface currents",
+        standard_name_mapping={
+            "uo": "x_sea_water_velocity",
+            "vo": "y_sea_water_velocity",
+        },
+    )
+
+
+def _run_opendrift(
+    *,
+    dataset,
+    start_time: datetime,
+    longitude: float,
+    latitude: float,
+    hours: int,
+    particles: int,
+    radius_m: float,
+    diffusivity_m2_s: float,
+):
+    try:
+        from opendrift.models.oceandrift import (
+            OceanDrift,
+        )
+    except ImportError as exc:
+        raise OceanDriftError(
+            "OpenDrift is not installed."
+        ) from exc
+
+    reader = _build_opendrift_reader(
+        dataset
+    )
+
+    model = OceanDrift(
+        loglevel=30,
+        seed=0,
+    )
+
+    model.add_reader(reader)
+
+    # v0.9 Step 1 = current-only passive surface tracer.
+    model.set_config(
+        "drift:vertical_mixing",
+        False,
+    )
+    model.set_config(
+        "drift:vertical_advection",
+        False,
+    )
+    model.set_config(
+        "drift:stokes_drift",
+        False,
+    )
+    model.set_config(
+        "environment:constant:horizontal_diffusivity",
+        float(diffusivity_m2_s),
+    )
+    model.set_config(
+        "general:coastline_action",
+        "previous",
+    )
+
+    model.seed_elements(
+        lon=float(longitude),
+        lat=float(latitude),
+        radius=float(radius_m),
+        number=int(particles),
+        time=start_time.replace(
+            tzinfo=None
+        ),
+        z=0,
+        wind_drift_factor=0.0,
+        current_drift_factor=1.0,
+    )
+
+    result = model.run(
+        duration=timedelta(
+            hours=hours
+        ),
+        time_step=DEFAULT_TIME_STEP_SECONDS,
+        time_step_output=DEFAULT_OUTPUT_STEP_SECONDS,
+    )
+
+    return result
+
+
+def _finite_points(
+    longitudes,
+    latitudes,
+    statuses=None,
+) -> list[list[float]]:
+    points: list[list[float]] = []
+
+    count = min(
+        len(longitudes),
+        len(latitudes),
+    )
+
+    for index in range(count):
+        try:
+            longitude = float(
+                longitudes[index]
+            )
+            latitude = float(
+                latitudes[index]
+            )
+        except (
+            TypeError,
+            ValueError,
+        ):
+            continue
+
+        if not (
+            math.isfinite(longitude)
+            and math.isfinite(latitude)
+        ):
+            continue
+
+        if statuses is not None:
+            try:
+                status = float(
+                    statuses[index]
+                )
+            except (
+                TypeError,
+                ValueError,
+            ):
+                continue
+
+            if not math.isfinite(status):
+                continue
+
+            # OpenDrift result points with status < 0
+            # are not valid particle positions.
+            if status < 0:
+                continue
+
+        points.append(
+            [
+                round(longitude, 6),
+                round(latitude, 6),
+            ]
+        )
+
+    return points
+
+
+def _convex_hull(
+    points: list[list[float]],
+) -> list[list[float]] | None:
+    unique = sorted(
+        {
+            (
+                float(point[0]),
+                float(point[1]),
+            )
+            for point in points
+        }
+    )
+
+    if len(unique) < 3:
+        return None
+
+    def cross(origin, a, b):
+        return (
+            (a[0] - origin[0])
+            * (b[1] - origin[1])
+            - (a[1] - origin[1])
+            * (b[0] - origin[0])
+        )
+
+    lower = []
+
+    for point in unique:
+        while (
+            len(lower) >= 2
+            and cross(
+                lower[-2],
+                lower[-1],
+                point,
+            )
+            <= 0
+        ):
+            lower.pop()
+
+        lower.append(point)
+
+    upper = []
+
+    for point in reversed(unique):
+        while (
+            len(upper) >= 2
+            and cross(
+                upper[-2],
+                upper[-1],
+                point,
+            )
+            <= 0
+        ):
+            upper.pop()
+
+        upper.append(point)
+
+    hull = (
+        lower[:-1]
+        + upper[:-1]
+    )
+
+    ring = [
+        [
+            round(point[0], 6),
+            round(point[1], 6),
+        ]
+        for point in hull
+    ]
+
+    ring.append(ring[0])
+
+    return ring
+
+
+def summarize_points(
+    points: list[list[float]],
+) -> dict:
+    if not points:
+        return {
+            "particle_count": 0,
+            "center": None,
+            "bbox": None,
+            "envelope": None,
+        }
+
+    longitudes = [
+        point[0]
+        for point in points
+    ]
+    latitudes = [
+        point[1]
+        for point in points
+    ]
+
+    center = {
+        "longitude": round(
+            sum(longitudes)
+            / len(longitudes),
+            6,
+        ),
+        "latitude": round(
+            sum(latitudes)
+            / len(latitudes),
+            6,
+        ),
+    }
+
+    bbox = {
+        "west": round(
+            min(longitudes),
+            6,
+        ),
+        "south": round(
+            min(latitudes),
+            6,
+        ),
+        "east": round(
+            max(longitudes),
+            6,
+        ),
+        "north": round(
+            max(latitudes),
+            6,
+        ),
+    }
+
+    hull = _convex_hull(points)
+
+    envelope = None
+
+    if hull is not None:
+        envelope = {
+            "type": "Polygon",
+            "coordinates": [hull],
+        }
+
+    return {
+        "particle_count": len(points),
+        "center": center,
+        "bbox": bbox,
+        "envelope": envelope,
+    }
+
+
+def _nearest_time_index(
+    result,
+    target_time: datetime,
+) -> int:
+    try:
+        import numpy as np
+    except ImportError as exc:
+        raise OceanDriftError(
+            "NumPy is required for drift result analysis."
+        ) from exc
+
+    raw_times = result["time"].values
+
+    if len(raw_times) < 1:
+        raise OceanDriftError(
+            "OpenDrift returned no output times."
+        )
+
+    target = np.datetime64(
+        target_time.replace(
+            tzinfo=None
+        )
+    )
+
+    differences = np.abs(
+        raw_times - target
+    )
+
+    return int(
+        differences.argmin()
+    )
+
+
+def _snapshot(
+    result,
+    *,
+    start_time: datetime,
+    horizon_hours: int,
+) -> dict:
+    target_time = (
+        start_time
+        + timedelta(
+            hours=horizon_hours
+        )
+    )
+
+    index = _nearest_time_index(
+        result,
+        target_time,
+    )
+
+    longitudes = (
+        result["lon"]
+        .isel(time=index)
+        .values
+    )
+    latitudes = (
+        result["lat"]
+        .isel(time=index)
+        .values
+    )
+
+    statuses = None
+
+    if "status" in result:
+        statuses = (
+            result["status"]
+            .isel(time=index)
+            .values
+        )
+
+    points = _finite_points(
+        longitudes,
+        latitudes,
+        statuses,
+    )
+
+    summary = summarize_points(
+        points
+    )
+
+    valid_time = _iso_utc(
+        result["time"]
+        .isel(time=index)
+        .values
+    )
+
+    return {
+        "hours": horizon_hours,
+        "time": valid_time,
+        **summary,
+        "points": points,
+    }
+
+
+def _mean_track(
+    result,
+) -> list[dict]:
+    track = []
+
+    time_count = int(
+        result.sizes.get(
+            "time",
+            0,
+        )
+    )
+
+    for index in range(
+        time_count
+    ):
+        longitudes = (
+            result["lon"]
+            .isel(time=index)
+            .values
+        )
+        latitudes = (
+            result["lat"]
+            .isel(time=index)
+            .values
+        )
+
+        statuses = None
+
+        if "status" in result:
+            statuses = (
+                result["status"]
+                .isel(time=index)
+                .values
+            )
+
+        points = _finite_points(
+            longitudes,
+            latitudes,
+            statuses,
+        )
+
+        summary = summarize_points(
+            points
+        )
+
+        if summary["center"] is None:
+            continue
+
+        track.append(
+            {
+                "time": _iso_utc(
+                    result["time"]
+                    .isel(time=index)
+                    .values
+                ),
+                "longitude": (
+                    summary["center"][
+                        "longitude"
+                    ]
+                ),
+                "latitude": (
+                    summary["center"][
+                        "latitude"
+                    ]
+                ),
+                "particle_count": (
+                    summary[
+                        "particle_count"
+                    ]
+                ),
+            }
+        )
+
+    return track
+
+
+def build_drift_payload(
+    result,
+    *,
+    start_time: datetime,
+    longitude: float,
+    latitude: float,
+    hours: int,
+    particles: int,
+    radius_m: float,
+    diffusivity_m2_s: float,
+    opendrift_version: str | None = None,
+) -> dict:
+    snapshots = [
+        _snapshot(
+            result,
+            start_time=start_time,
+            horizon_hours=horizon,
+        )
+        for horizon in requested_horizons(
+            hours
+        )
+    ]
+
+    return {
+        "model": "OpenDrift OceanDrift",
+        "model_version": opendrift_version,
+        "scope": (
+            "passive_surface_tracer_current_only"
+        ),
+        "forcing": {
+            "source": "Copernicus Marine",
+            "dataset_id": DATASET_ID,
+            "variables": ["uo", "vo"],
+            "depth_m": SURFACE_DEPTH_M,
+            "bbox": forcing_bbox(
+                longitude=longitude,
+                latitude=latitude,
+            ),
+        },
+        "seed": {
+            "longitude": round(
+                float(longitude),
+                6,
+            ),
+            "latitude": round(
+                float(latitude),
+                6,
+            ),
+            "particle_count": int(
+                particles
+            ),
+            "radius_m": float(
+                radius_m
+            ),
+            "radius_semantics": (
+                "OpenDrift Gaussian seeding radius "
+                "(approximately one standard deviation)"
+            ),
+        },
+        "simulation": {
+            "start_time": start_time.isoformat(),
+            "forecast_hours": int(
+                hours
+            ),
+            "integration_step_seconds": (
+                DEFAULT_TIME_STEP_SECONDS
+            ),
+            "output_step_seconds": (
+                DEFAULT_OUTPUT_STEP_SECONDS
+            ),
+            "horizontal_diffusivity_m2_s": float(
+                diffusivity_m2_s
+            ),
+            "wind_drift_factor": 0.0,
+            "current_drift_factor": 1.0,
+            "coastline_action": "previous",
+        },
+        "not_included": [
+            "wind forcing",
+            "wave / Stokes drift",
+            "oil weathering",
+            "evaporation",
+            "emulsification",
+            "oil viscosity changes",
+        ],
+        "horizons": snapshots,
+        "mean_track": _mean_track(
+            result
+        ),
+    }
+
+
+def run_surface_drift(
+    *,
+    longitude: float,
+    latitude: float,
+    at: str | datetime | None = None,
+    hours: int = DEFAULT_HOURS,
+    particles: int = DEFAULT_PARTICLES,
+    radius_m: float = DEFAULT_RADIUS_M,
+    diffusivity_m2_s: float = DEFAULT_DIFFUSIVITY_M2_S,
+    cache_ttl_seconds: int = DEFAULT_CACHE_TTL_SECONDS,
+) -> dict:
+    validate_drift_request(
+        longitude=longitude,
+        latitude=latitude,
+        hours=hours,
+        particles=particles,
+        radius_m=radius_m,
+        diffusivity_m2_s=diffusivity_m2_s,
+    )
+
+    start_time = normalize_target_time(
+        at
+    )
+
+    cache_path = _cache_path(
+        start_time=start_time,
+        longitude=longitude,
+        latitude=latitude,
+        hours=hours,
+        particles=particles,
+        radius_m=radius_m,
+        diffusivity_m2_s=diffusivity_m2_s,
+    )
+
+    cached = _read_cache(
+        cache_path,
+        ttl_seconds=cache_ttl_seconds,
+    )
+
+    if cached is not None:
+        cached["cache"] = {
+            "status": "fresh",
+            "path": str(
+                cache_path
+            ),
+        }
+        return cached
+
+    dataset = None
+
+    try:
+        dataset = _open_forcing_dataset(
+            start_time=start_time,
+            hours=hours,
+            longitude=longitude,
+            latitude=latitude,
+        )
+
+        result = _run_opendrift(
+            dataset=dataset,
+            start_time=start_time,
+            longitude=longitude,
+            latitude=latitude,
+            hours=hours,
+            particles=particles,
+            radius_m=radius_m,
+            diffusivity_m2_s=diffusivity_m2_s,
+        )
+
+        try:
+            import opendrift
+
+            version = getattr(
+                opendrift,
+                "__version__",
+                None,
+            )
+        except ImportError:
+            version = None
+
+        payload = build_drift_payload(
+            result,
+            start_time=start_time,
+            longitude=longitude,
+            latitude=latitude,
+            hours=hours,
+            particles=particles,
+            radius_m=radius_m,
+            diffusivity_m2_s=diffusivity_m2_s,
+            opendrift_version=version,
+        )
+
+        payload["generated_at"] = (
+            _utc_now().isoformat()
+        )
+
+        _write_cache(
+            cache_path,
+            payload,
+        )
+
+        payload["cache"] = {
+            "status": "live",
+            "path": str(
+                cache_path
+            ),
+        }
+
+        return payload
+
+    except OceanDriftInputError:
+        raise
+    except Exception as exc:
+        if isinstance(
+            exc,
+            OceanDriftError,
+        ):
+            raise
+
+        raise OceanDriftError(
+            "Unable to calculate Black Sea drift forecast: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
+    finally:
+        if (
+            dataset is not None
+            and hasattr(
+                dataset,
+                "close",
+            )
+        ):
+            dataset.close()
+
+===== ocean drift API =====
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Query,
+)
+
+from agents.ocean_data.drift_forecast import (
+    DEFAULT_DIFFUSIVITY_M2_S,
+    DEFAULT_HOURS,
+    DEFAULT_PARTICLES,
+    DEFAULT_RADIUS_M,
+    MAX_DIFFUSIVITY_M2_S,
+    MAX_PARTICLES,
+    MAX_RADIUS_M,
+    MIN_PARTICLES,
+    OceanDriftError,
+    OceanDriftInputError,
+    STANDARD_HORIZONS_HOURS,
+    run_surface_drift,
+)
+
+
+router = APIRouter(
+    prefix="/ocean/drift",
+    tags=["ocean"],
+)
+
+
+@router.get("/")
+def get_drift_forecast(
+    lon: float = Query(
+        ...,
+        description=(
+            "Release longitude in decimal degrees."
+        ),
+    ),
+    lat: float = Query(
+        ...,
+        description=(
+            "Release latitude in decimal degrees."
+        ),
+    ),
+    at: str | None = Query(
+        default=None,
+        description=(
+            "UTC release time in ISO 8601. "
+            "Rounded down to the nearest model hour."
+        ),
+    ),
+    hours: int = Query(
+        default=DEFAULT_HOURS,
+        description=(
+            "Forecast horizon. Supported values: "
+            + ", ".join(
+                str(value)
+                for value in STANDARD_HORIZONS_HOURS
+            )
+            + "."
+        ),
+    ),
+    particles: int = Query(
+        default=DEFAULT_PARTICLES,
+        ge=MIN_PARTICLES,
+        le=MAX_PARTICLES,
+        description=(
+            "Number of passive tracer particles."
+        ),
+    ),
+    radius_m: float = Query(
+        default=DEFAULT_RADIUS_M,
+        ge=0,
+        le=MAX_RADIUS_M,
+        description=(
+            "OpenDrift Gaussian seeding radius in metres."
+        ),
+    ),
+    diffusivity_m2_s: float = Query(
+        default=DEFAULT_DIFFUSIVITY_M2_S,
+        ge=0,
+        le=MAX_DIFFUSIVITY_M2_S,
+        description=(
+            "Constant horizontal diffusivity in m2/s."
+        ),
+    ),
+):
+    try:
+        return run_surface_drift(
+            longitude=lon,
+            latitude=lat,
+            at=at,
+            hours=hours,
+            particles=particles,
+            radius_m=radius_m,
+            diffusivity_m2_s=diffusivity_m2_s,
+        )
+    except OceanDriftInputError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+    except OceanDriftError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+
+===== event store relevant =====
+import sqlite3
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+from uuid import uuid4
+from email.utils import parsedate_to_datetime
+
+
+STATUS_ORDER = {
+    "detected": 0,
+    "active": 1,
+    "contained": 2,
+    "resolved": 3,
+}
+
+
+EVENT_MATCH_WINDOW_HOURS = 72
+
+
+def parse_news_datetime(value):
+    if not value:
+        return None
+
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        text = str(value).strip()
+
+        if not text:
+            return None
+
+        try:
+            parsed = datetime.fromisoformat(
+                text.replace("Z", "+00:00")
+            )
+        except ValueError:
+            try:
+                parsed = parsedate_to_datetime(
+                    text
+                )
+            except (
+                TypeError,
+                ValueError,
+                OverflowError,
+            ):
+                return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(
+            tzinfo=timezone.utc
+        )
+
+    return parsed.astimezone(
+        timezone.utc
+    )
+
+
+DEFAULT_DB_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "database"
+    / "events.db"
+)
+
+
+class EventStore:
+
+    def __init__(self, db_path: str | Path | None = None):
+        self.db_path = Path(db_path or DEFAULT_DB_PATH)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._init_database()
+
+    def _connect(self):
+        return sqlite3.connect(self.db_path)
+
+    def _init_database(self):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS events (
+                    id TEXT PRIMARY KEY,
+                    category TEXT NOT NULL,
+                    location_name TEXT NOT NULL,
+                    primary_title TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    severity TEXT,
+                    confidence REAL,
+                    first_seen TEXT NOT NULL,
+                    last_seen TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+
+            cursor.execute(
+                "PRAGMA table_info(events)"
+            )
+
+            event_columns = {
+                row[1]
+                for row in cursor.fetchall()
+            }
+
+            if "latitude" not in event_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE events
+                    ADD COLUMN latitude REAL
+                    """
+                )
+
+            if "longitude" not in event_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE events
+                    ADD COLUMN longitude REAL
+                    """
+                )
+
+            if "location_type" not in event_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE events
+                    ADD COLUMN location_type TEXT
+                    """
+                )
+
+            if "location_confidence" not in event_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE events
+                    ADD COLUMN location_confidence REAL
+                    """
+                )
+
+            if "coordinate_source" not in event_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE events
+                    ADD COLUMN coordinate_source TEXT
+                    """
+                )
+
+            if "incident_time" not in event_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE events
+                    ADD COLUMN incident_time TEXT
+                    """
+                )
+
+            if "detection_time" not in event_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE events
+                    ADD COLUMN detection_time TEXT
+                    """
+                )
+
+            if "source_time" not in event_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE events
+                    ADD COLUMN source_time TEXT
+                    """
+                )
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS event_evidence (
+                    id TEXT PRIMARY KEY,
+                    event_id TEXT NOT NULL,
+                    source TEXT,
+                    title TEXT,
+                    url TEXT,
+                    published_at TEXT,
+                    confidence REAL,
+                    reason TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(event_id) REFERENCES events(id)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS event_status_history (
+                    id TEXT PRIMARY KEY,
+                    event_id TEXT NOT NULL,
+                    old_status TEXT,
+                    new_status TEXT NOT NULL,
+                    reason TEXT,
+                    evidence_id TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(event_id) REFERENCES events(id)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS
+                idx_event_evidence_event_url
+                ON event_evidence(event_id, url)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS
+                idx_event_evidence_event_source_title
+                ON event_evidence(event_id, source, title)
+            """)
+
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS
+                uq_event_evidence_event_url
+                ON event_evidence(event_id, url)
+                WHERE url IS NOT NULL
+                  AND length(trim(url)) > 0
+            """)
+
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS
+                uq_event_evidence_event_source_title_no_url
+                ON event_evidence(
+                    event_id,
+                    source,
+                    title
+                )
+                WHERE url IS NULL
+                   OR length(trim(url)) = 0
+            """)
+
+            connection.commit()
+
+    @staticmethod
+    def _normalize_confidence(value):
+        if value is None:
+            return None
+
+        confidence = float(value)
+
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError(
+                "confidence must be between 0.0 and 1.0"
+            )
+
+        return confidence
+
+    @staticmethod
+    def _normalize_optional_datetime(value):
+        if value is None:
+            return None
+
+        parsed = parse_news_datetime(value)
+
+        if parsed is None:
+            raise ValueError(
+                f"Invalid datetime value: {value!r}"
+            )
+
+        return parsed.isoformat()
+
+    def create_event(
+        self,
+        *,
+        category: str,
+        location_name: str,
+        primary_title: str,
+        status: str = "detected",
+        severity: str = "medium",
+        confidence: float = 0.0,
+        latitude: float | None = None,
+        longitude: float | None = None,
+        location_type: str | None = None,
+        location_confidence: float | None = None,
+        coordinate_source: str | None = None,
+        incident_time=None,
+        detection_time=None,
+        source_time=None,
+    ):
+        now = datetime.now(timezone.utc).isoformat()
+        event_id = "evt_" + str(uuid4())
+
+        location_confidence = (
+            self._normalize_confidence(
+                location_confidence
+            )
+        )
+
+        incident_time = self._normalize_optional_datetime(
+            incident_time
+        )
+        detection_time = self._normalize_optional_datetime(
+            detection_time
+        ) or now
+        source_time = self._normalize_optional_datetime(
+            source_time
+        )
+
+        with self._connect() as connection:
+            connection.execute("""
+                INSERT INTO events (
+                    id, category, location_name, primary_title,
+                    status, severity, confidence,
+                    first_seen, last_seen,
+                    created_at, updated_at,
+                    latitude, longitude,
+                    location_type, location_confidence,
+                    coordinate_source,
+                    incident_time, detection_time, source_time
+                )
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?
+                )
+            """, (
+                event_id, category, location_name, primary_title,
+                status, severity, confidence,
+                now, now, now, now,
+                latitude, longitude,
+                location_type, location_confidence,
+                coordinate_source,
+                incident_time, detection_time, source_time
+            ))
+            connection.commit()
+
+        return event_id
+
+    def list_event_records(self):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                SELECT
+                    e.id,
+                    e.category,
+                    e.location_name,
+                    e.primary_title,
+                    e.status,
+                    e.severity,
+                    e.confidence,
+                    e.first_seen,
+                    e.last_seen,
+                    e.created_at,
+                    e.updated_at,
+                    e.latitude,
+                    e.longitude,
+                    e.location_type,
+                    e.location_confidence,
+                    e.coordinate_source,
+                    e.incident_time,
+                    e.detection_time,
+                    e.source_time,
+                    (
+                        SELECT COUNT(*)
+                        FROM event_evidence AS ev
+                        WHERE ev.event_id = e.id
+                    ) AS evidence_count
+                FROM events AS e
+                ORDER BY
+                    e.updated_at DESC,
+                    e.created_at DESC
+                """
+            )
+
+            rows = cursor.fetchall()
+
+        return [
+            self._event_row_to_record(
+                row
+            )
+            for row in rows
+        ]
+
+    def get_event_record(
+        self,
+        event_id,
+    ):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                SELECT
+                    e.id,
+                    e.category,
+                    e.location_name,
+                    e.primary_title,
+                    e.status,
+                    e.severity,
+                    e.confidence,
+                    e.first_seen,
+                    e.last_seen,
+                    e.created_at,
+                    e.updated_at,
+                    e.latitude,
+                    e.longitude,
+                    e.location_type,
+                    e.location_confidence,
+                    e.coordinate_source,
+                    e.incident_time,
+                    e.detection_time,
+                    e.source_time,
+                    (
+                        SELECT COUNT(*)
+                        FROM event_evidence AS ev
+                        WHERE ev.event_id = e.id
+                    ) AS evidence_count
+                FROM events AS e
+                WHERE e.id = ?
+                LIMIT 1
+                """,
+                (event_id,),
+            )
+
+            row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        return self._event_row_to_record(
+            row
+        )
+
+    @staticmethod
+    def _event_row_to_record(row):
+        return {
+            "id": row[0],
+            "category": row[1],
+            "location": {
+                "name": row[2],
+                "latitude": row[11],
+                "longitude": row[12],
+                "type": row[13],
+                "confidence": row[14],
+                "source": row[15],
+            },
+            "time": {
+                "incident_time": row[16],
+                "detection_time": row[17],
+                "source_time": row[18],
+            },
+            "primary_title": row[3],
+            "status": row[4],
+            "severity": row[5],
+            "confidence": row[6],
+            "first_seen": row[7],
+            "last_seen": row[8],
+            "created_at": row[9],
+            "updated_at": row[10],
+            "evidence_count": row[19],
+        }
+
+    def get_event_evidence_records(
+        self,
+        event_id,
+    ):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    event_id,
+                    source,
+                    title,
+                    url,
+                    published_at,
+                    confidence,
+                    reason,
+                    created_at
+                FROM event_evidence
+                WHERE event_id = ?
+                ORDER BY created_at ASC
+                """,
+                (event_id,),
+            )
+
+            rows = cursor.fetchall()
+
+        return [
+            {
+                "id": row[0],
+                "event_id": row[1],
+                "source": row[2],
+                "title": row[3],
+                "url": row[4],
+                "published_at": row[5],
+                "confidence": row[6],
+                "reason": row[7],
+                "created_at": row[8],
+            }
+            for row in rows
+        ]
+
+    def get_event_coordinates(
+        self,
+        event_id,
+    ):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                SELECT latitude, longitude
+                FROM events
+                WHERE id = ?
+                """,
+                (event_id,),
+            )
+
+            row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        return row[0], row[1]
+
+    def set_event_coordinates(
+        self,
+        *,
+        event_id,
+        latitude,
+        longitude,
+        overwrite=False,
+    ):
+        if (
+            latitude is None
+            or longitude is None
+        ):
+            return False
+
+        now = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            if overwrite:
+                cursor.execute(
+                    """
+                    UPDATE events
+                    SET latitude = ?,
+                        longitude = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        latitude,
+                        longitude,
+                        now,
+                        event_id,
+                    ),
+                )
+            else:
+                cursor.execute(
+                    """
+                    UPDATE events
+                    SET latitude = ?,
+                        longitude = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                      AND (
+                          latitude IS NULL
+                          OR longitude IS NULL
+                      )
+                    """,
+                    (
+                        latitude,
+                        longitude,
+                        now,
+                        event_id,
+                    ),
+                )
+
+            changed = cursor.rowcount > 0
+            connection.commit()
+
+        return changed
+
+    def set_event_location_metadata(
+        self,
+        *,
+        event_id,
+        location_type=None,
+        location_confidence=None,
+        coordinate_source=None,
+        overwrite=False,
+    ):
+        values = {
+            "location_type": location_type,
+            "location_confidence": (
+                self._normalize_confidence(
+                    location_confidence
+                )
+                if location_confidence is not None
+                else None
+            ),
+            "coordinate_source": coordinate_source,
+        }
+
+        return self._update_optional_event_fields(
+            event_id=event_id,
+            values=values,
+            overwrite=overwrite,
+        )
+
+    def set_event_time_metadata(
+        self,
+        *,
+        event_id,
+        incident_time=None,
+        detection_time=None,
+        source_time=None,
+        overwrite=False,
+    ):
+        values = {
+            "incident_time": (
+                self._normalize_optional_datetime(
+                    incident_time
+                )
+                if incident_time is not None
+                else None
+            ),
+            "detection_time": (
+                self._normalize_optional_datetime(
+                    detection_time
+                )
+                if detection_time is not None
+                else None
+            ),
+            "source_time": (
+                self._normalize_optional_datetime(
+                    source_time
+                )
+                if source_time is not None
+                else None
+            ),
+        }
+
+        return self._update_optional_event_fields(
+            event_id=event_id,
+            values=values,
+            overwrite=overwrite,
+        )
+
+    def _update_optional_event_fields(
+        self,
+        *,
+        event_id,
+        values,
+        overwrite,
+    ):
+        provided = {
+            column: value
+            for column, value in values.items()
+            if value is not None
+        }
+
+        if not provided:
+            return False
+
+        now = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        columns = list(provided)
+
+        if overwrite:
+            assignments = [
+                f"{column} = ?"
+                for column in columns
+            ]
+            where_extra = ""
+        else:
+            assignments = [
+                f"{column} = COALESCE({column}, ?)"
+                for column in columns
+            ]
+            null_checks = " OR ".join(
+                f"{column} IS NULL"
+                for column in columns
+            )
+            where_extra = (
+                f" AND ({null_checks})"
+            )
+
+        assignments.append(
+            "updated_at = ?"
+        )
+
+        parameters = [
+            provided[column]
+            for column in columns
+        ]
+        parameters.extend([
+            now,
+            event_id,
+        ])
+
+        sql = (
+            "UPDATE events SET "
+            + ", ".join(assignments)
+            + " WHERE id = ?"
+            + where_extra
+        )
+
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                sql,
+                parameters,
+            )
+            changed = cursor.rowcount > 0
+            connection.commit()
+
+        return changed
+
+    def get_candidate_events(self, *, category, location_name):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute("""
+                SELECT id, category, location_name, primary_title, created_at
+                FROM events
+                WHERE category = ?
+                AND location_name = ?
+                ORDER BY created_at DESC
+            """, (category, location_name))
+            return cursor.fetchall()
+
+    def get_event_titles(
+        self,
+        event_id,
+    ):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                SELECT primary_title
+                FROM events
+                WHERE id = ?
+                """,
+                (event_id,),
+            )
+
+            event_row = cursor.fetchone()
+
+            if not event_row:
+                return []
+
+            titles = []
+
+            primary_title = event_row[0]
+
+            if primary_title:
+                titles.append(
+                    primary_title
+                )
+
+            cursor.execute(
+                """
+                SELECT title
+                FROM event_evidence
+                WHERE event_id = ?
+                  AND title IS NOT NULL
+                  AND length(trim(title)) > 0
+                ORDER BY created_at ASC
+                """,
+                (event_id,),
+            )
+
+            for row in cursor.fetchall():
+                evidence_title = row[0]
+
+                if (
+                    evidence_title
+                    and evidence_title not in titles
+                ):
+                    titles.append(
+                        evidence_title
+                    )
+
+        return titles
+
+    def get_event_latest_published_at(
+        self,
+        event_id,
+    ):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                SELECT published_at
+                FROM event_evidence
+                WHERE event_id = ?
+                  AND published_at IS NOT NULL
+                """,
+                (event_id,),
+            )
+
+            parsed_dates = []
+
+            for row in cursor.fetchall():
+                parsed = parse_news_datetime(
+                    row[0]
+                )
+
+                if parsed is not None:
+                    parsed_dates.append(
+                        parsed
+                    )
+
+        if not parsed_dates:
+            return None
+
+        return max(
+            parsed_dates
+        )
+
+    def _is_event_within_match_window(
+        self,
+        *,
+        event_id,
+        published_at,
+    ):
+        new_time = parse_news_datetime(
+            published_at
+        )
+
+        if new_time is None:
+            return True
+
+        existing_time = (
+            self.get_event_latest_published_at(
+                event_id
+            )
+        )
+
+        if existing_time is None:
+            return True
+
+        difference = abs(
+            new_time - existing_time
+        )
+
+        return difference <= timedelta(
+            hours=EVENT_MATCH_WINDOW_HOURS
+        )
+
+    def find_matching_event(
+        self,
+        *,
+        category,
+        location_name,
+        title=None,
+        published_at=None,
+    ):
+        candidates = self.get_candidate_events(
+            category=category,
+            location_name=location_name,
+        )
+
+        if not candidates:
+            return None
+
+        if title is None:
+            for candidate in candidates:
+                event_id = candidate[0]
+
+                if self._is_event_within_match_window(
+                    event_id=event_id,
+                    published_at=published_at,
+                ):
+                    return event_id
+
+            return None
+
+        from agents.news_agent.event_matcher import calculate_event_match
+
+        best = None
+        best_score = 0.0
+
+        for candidate in candidates:
+            event_id = candidate[0]
+
+            if not self._is_event_within_match_window(
+                event_id=event_id,
+                published_at=published_at,
+            ):
+                continue
+
+            candidate_titles = (
+                self.get_event_titles(
+                    event_id
+                )
+            )
+
+            if not candidate_titles:
+                candidate_titles = [
+                    candidate[3]
+                ]
+
+            candidate_best_score = 0.0
+
+            for existing_title in candidate_titles:
+                result = calculate_event_match(
+                    existing_title=existing_title,
+                    new_title=title,
+                    existing_category=candidate[1],
+                    new_category=category,
+                    existing_location=candidate[2],
+                    new_location=location_name,
+                )
+
+                if (
+                    result.is_match
+                    and result.score
+                    > candidate_best_score
+                ):
+                    candidate_best_score = (
+                        result.score
+                    )
+
+            if (
+                candidate_best_score
+                > best_score
+            ):
+                best = event_id
+                best_score = (
+                    candidate_best_score
+                )
+
+        return best
+
+    def find_existing_evidence_id(
+        self,
+        *,
+        event_id,
+        source,
+        title,
+        url,
+    ):
+        normalized_url = (
+            url.strip()
+            if isinstance(url, str)
+            else None
+        )
+
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            if normalized_url:
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM event_evidence
+                    WHERE event_id = ?
+                    AND url = ?
+                    LIMIT 1
+                    """,
+                    (
+                        event_id,
+                        normalized_url,
+                    ),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM event_evidence
+                    WHERE event_id = ?
+                    AND source = ?
+                    AND title = ?
+                    LIMIT 1
+                    """,
+                    (
+                        event_id,
+                        source,
+                        title,
+                    ),
+                )
+
+            row = cursor.fetchone()
+
+        return row[0] if row else None
+
+    def find_event_by_evidence_url(
+        self,
+        url: str,
+    ):
+        if not url:
+            return None
+
+        normalized_url = url.strip()
+
+        if not normalized_url:
+            return None
+
+        with self._connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                SELECT event_id
+                FROM event_evidence
+                WHERE url = ?
+                ORDER BY created_at ASC
+                LIMIT 1
+                """,
+                (normalized_url,),
+            )
+
+            row = cursor.fetchone()
+
+        return row[0] if row else None
+
+    def add_evidence(
+        self,
+        *,
+        event_id,
+        source,
+        title,
+        url,
+        published_at,
+        confidence,
+        reason,
+    ):
+        normalized_url = (
+            url.strip()
+            if isinstance(url, str)
+            else None
+        )
+
+        existing_evidence_id = (
+            self.find_existing_evidence_id(
+                event_id=event_id,
+                source=source,
+                title=title,
+                url=normalized_url,
+            )
+        )
+
+        if existing_evidence_id is not None:
+            return existing_evidence_id
+
+        evidence_id = "ev_" + str(uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+
+        with self._connect() as connection:
+            connection.execute("""
+                INSERT INTO event_evidence (
+                    id, event_id, source, title, url,
+                    published_at, confidence, reason, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                evidence_id, event_id, source, title, normalized_url,
+                published_at, confidence, reason, now
+            ))
+
+            connection.execute("""
+                UPDATE events
+                SET last_seen = ?, updated_at = ?
+                WHERE id = ?
+            """, (now, now, event_id))
+
+            connection.commit()
+
+        return evidence_id
+
+    def get_event_evidence(self, event_id):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute("""
+                SELECT source, title, confidence
+                FROM event_evidence
+                WHERE event_id = ?
+            """, (event_id,))
+            return cursor.fetchall()
+
+    def add_status_history(
+        self,
+        *,
+        event_id,
+        old_status,
+        new_status,
+        reason,
+        evidence_id=None,
+    ):
+        history_id = "st_" + str(uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+
+        with self._connect() as connection:
+            connection.execute("""
+                INSERT INTO event_status_history (
+                    id, event_id, old_status, new_status,
+                    reason, evidence_id, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                history_id, event_id, old_status,
+                new_status, reason, evidence_id, now
+            ))
+            connection.commit()
+
+        return history_id
+
+    def update_status(
+        self,
+        *,
+        event_id,
+        new_status,
+        reason,
+        evidence_id=None,
+    ):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                "SELECT status FROM events WHERE id = ?",
+                (event_id,),
+            )
+
+            row = cursor.fetchone()
+
+            if not row:
+                return None
+
+            old_status = row[0]
+
+            if old_status == new_status:
+                return None
+
+            old_rank = STATUS_ORDER.get(old_status)
+            new_rank = STATUS_ORDER.get(new_status)
+
+            if (
+                old_rank is not None
+                and new_rank is not None
+                and new_rank < old_rank
+            ):
+                return None
+
+            now = datetime.now(timezone.utc).isoformat()
+
+            connection.execute("""
+                UPDATE events
+                SET status = ?, updated_at = ?
+                WHERE id = ?
+            """, (new_status, now, event_id))
+
+            connection.commit()
+
+        return self.add_status_history(
+            event_id=event_id,
+            old_status=old_status,
+            new_status=new_status,
+            reason=reason,
+            evidence_id=evidence_id,
+        )
+
+    def get_status_history(self, event_id):
+        with self._connect() as connection:
+            cursor = connection.cursor()
+            cursor.execute("""
+                SELECT old_status, new_status, reason
+                FROM event_status_history
+                WHERE event_id = ?
+                ORDER BY created_at
+            """, (event_id,))
+            return cursor.fetchall()
+
+===== existing geo / location files =====
+D:\repository\black-sea-eco-monitor\agents\news_agent\location_resolver.py
+D:\repository\black-sea-eco-monitor\agents\news_agent\__pycache__\location_resolver.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\adios_db\models\oil\location_coordinates.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\adios_db\models\oil\location_info.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\adios_db\models\oil\__pycache__\location_coordinates.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\adios_db\models\oil\__pycache__\location_info.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\adios_db\test\test_models\test_oil\test_location_coordinates.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\adios_db\test\test_models\test_oil\test_location_info.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\adios_db\test\test_models\test_oil\__pycache__\test_location_coordinates.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\adios_db\test\test_models\test_oil\__pycache__\test_location_info.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\geodesic.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\mpl\geoaxes.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\mpl\geocollection.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\mpl\__pycache__\geoaxes.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\mpl\__pycache__\geocollection.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\tests\test_coastline.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\tests\test_geodesic.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\tests\crs\test_geostationary.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\tests\crs\test_rotated_geodetic.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\tests\crs\__pycache__\test_geostationary.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\tests\crs\__pycache__\test_rotated_geodetic.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\tests\mpl\baseline_images\mpl\test_axes\geoaxes_set_boundary_clipping.png
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\tests\mpl\baseline_images\mpl\test_axes\geoaxes_subslice.png
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\tests\mpl\baseline_images\mpl\test_features\gshhs_coastlines.png
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\tests\mpl\baseline_images\mpl\test_gridliner\test_grid_labels_inline_Geostationary.png
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\tests\mpl\baseline_images\mpl\test_gridliner\test_grid_labels_inline_usa_Geostationary.png
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\tests\__pycache__\test_coastline.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\tests\__pycache__\test_geodesic.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\cartopy\__pycache__\geodesic.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\feedparser\namespaces\georss.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\feedparser\namespaces\__pycache__\georss.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\fontTools\colorLib\geometry.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\fontTools\colorLib\__pycache__\geometry.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\fontTools\feaLib\location.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\fontTools\feaLib\__pycache__\location.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geojson\geometry.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geojson\__pycache__\geometry.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\geodataframe.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\geoseries.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\io\_geoarrow.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\io\tests\test_file_geom_types_drivers.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\io\tests\test_geoarrow.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\io\tests\__pycache__\test_file_geom_types_drivers.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\io\tests\__pycache__\test_geoarrow.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\io\__pycache__\_geoarrow.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\tests\test_geocode.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\tests\test_geodataframe.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\tests\test_geom_methods.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\tests\test_geoseries.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\tests\data\null_geom.geojson
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\tests\__pycache__\test_geocode.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\tests\__pycache__\test_geodataframe.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\tests\__pycache__\test_geom_methods.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\tests\__pycache__\test_geoseries.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\tools\geocoding.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\tools\__pycache__\geocoding.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\__pycache__\geodataframe.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\geopandas\__pycache__\geoseries.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\matplotlib\projections\geo.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\matplotlib\projections\geo.pyi
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\matplotlib\projections\__pycache__\geo.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\PIL\ImageOps.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\PIL\__pycache__\ImageOps.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyarrow\include\arrow\device_allocation_type_set.h
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyarrow\include\parquet\index_location.h
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyogrio\geopandas.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyogrio\_geometry.c
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyogrio\_geometry.pyd
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyogrio\tests\test_geopandas_io.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyogrio\tests\__pycache__\test_geopandas_io.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyogrio\__pycache__\geopandas.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyogrio.libs\geos-bda2e4a35fc87c3cb436d3add2953ffb.dll
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyogrio.libs\geos_c-05968ceb6a9aade9961ca529050ada59.dll
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyogrio.libs\geotiff-0f08c58b982b142224f2707f8e49d843.dll
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyproj\geod.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyproj\_geod.c
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyproj\_geod.cp312-win_amd64.pyd
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyproj\_geod.pxd
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyproj\_geod.pyi
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyproj\_geod.pyx
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pyproj\__pycache__\geod.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pystac\validation\jsonschemas\geojson\Geometry.json
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\pytz\zoneinfo\Atlantic\South_Georgia
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\scipy\spatial\_geometric_slerp.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\scipy\spatial\__pycache__\_geometric_slerp.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\scipy\special\tests\test_hypergeometric.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\scipy\special\tests\__pycache__\test_hypergeometric.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\scipy\_external\cobyqa\subsolvers\geometry.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\scipy\_external\cobyqa\subsolvers\__pycache__\geometry.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\scipy\_external\pyprima\cobyla\geometry.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\scipy\_external\pyprima\cobyla\__pycache__\geometry.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\scripts\add_location_coordinates.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\scripts\ADIOS_Locations.csv
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\scripts\location_swap_country.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\scripts\update_location_field.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\scripts\__pycache__\add_location_coordinates.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\scripts\__pycache__\location_swap_country.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\scripts\__pycache__\update_location_field.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\geos.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\_geometry.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\_geometry_helpers.cp312-win_amd64.pyd
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\_geos.cp312-win_amd64.pyd
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\_geos.pxd
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\_pygeos_api.pxd
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\geometry\geo.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\geometry\__pycache__\geo.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\tests\test_geometry.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\tests\geometry\test_geometry_base.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\tests\geometry\__pycache__\test_geometry_base.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\tests\legacy\test_geointerface.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\tests\legacy\test_invalid_geometries.py
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\tests\legacy\__pycache__\test_geointerface.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\tests\legacy\__pycache__\test_invalid_geometries.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\tests\__pycache__\test_geometry.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\__pycache__\geos.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely\__pycache__\_geometry.cpython-312.pyc
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely-2.1.2.dist-info\licenses\LICENSE_GEOS
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely.libs\geos-ae6efa0782962b98e358f10ea539ae5f.dll
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\shapely.libs\geos_c-072b7a9224d16d3e4ab2395bb855b2d3.dll
+D:\repository\black-sea-eco-monitor\backend\venv\Lib\site-packages\tzdata\zoneinfo\Atlantic\South_Georgia
+
+===== relevant tests =====
+D:\repository\black-sea-eco-monitor\tests\location_resolver.py
+D:\repository\black-sea-eco-monitor\tests\test_ar_scene_geo.py
+D:\repository\black-sea-eco-monitor\tests\test_location_resolver.py
+D:\repository\black-sea-eco-monitor\tests\test_ocean_drift_api.py
+D:\repository\black-sea-eco-monitor\tests\test_ocean_drift_forecast.py
+D:\repository\black-sea-eco-monitor\tests\__pycache__\test_ar_scene_geo.cpython-312-pytest-9.1.1.pyc
+D:\repository\black-sea-eco-monitor\tests\__pycache__\test_location_resolver.cpython-312-pytest-9.1.1.pyc
+D:\repository\black-sea-eco-monitor\tests\__pycache__\test_ocean_drift_api.cpython-312-pytest-9.1.1.pyc
+D:\repository\black-sea-eco-monitor\tests\__pycache__\test_ocean_drift_forecast.cpython-312-pytest-9.1.1.pyc
