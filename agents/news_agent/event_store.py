@@ -1690,6 +1690,54 @@ class EventStore:
         return True
 
 
+    def get_event_satellite_observations(
+        self,
+        event_id,
+    ):
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    satellite_observation_id,
+                    relation_type,
+                    relation_confidence,
+                    created_at
+                FROM event_satellite_observations
+                WHERE event_id = ?
+                ORDER BY created_at ASC
+                """,
+                (event_id,),
+            ).fetchall()
+
+        records = []
+
+        for (
+            satellite_observation_id,
+            relation_type,
+            relation_confidence,
+            created_at,
+        ) in rows:
+            observation = self.get_satellite_observation(
+                satellite_observation_id
+            )
+
+            if observation is None:
+                continue
+
+            records.append(
+                {
+                    "relation_type": relation_type,
+                    "relation_confidence": (
+                        relation_confidence
+                    ),
+                    "created_at": created_at,
+                    "observation": observation,
+                }
+            )
+
+        return records
+
+
     def get_event_evidence(self, event_id):
         with self._connect() as connection:
             cursor = connection.cursor()
