@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from sqlalchemy import create_engine
@@ -9,7 +11,11 @@ from backend.main import app
 from backend.database.database import Base, get_db
 
 
-TEST_DATABASE_URL = "sqlite:///./test_database.db"
+TEST_RESULTS_DIR = Path("test-results")
+TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+TEST_DATABASE_PATH = TEST_RESULTS_DIR / "test_database.db"
+TEST_DATABASE_URL = f"sqlite:///{TEST_DATABASE_PATH.as_posix()}"
 
 
 engine = create_engine(
