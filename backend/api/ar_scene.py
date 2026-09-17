@@ -39,6 +39,16 @@ def get_ar_scene(
             "If omitted, the conference demo observer is used."
         ),
     ),
+    heading_deg: float | None = Query(
+        default=None,
+        ge=0.0,
+        lt=360.0,
+        description=(
+            "Optional device/camera heading in degrees from true north. "
+            "Used to precompute relative_angle_deg and direction_hint. "
+            "Unity should still recompute relative angle locally at frame rate."
+        ),
+    ),
     max_distance_km: float | None = Query(
         default=None,
         gt=0.0,
@@ -53,8 +63,8 @@ def get_ar_scene(
     """
     Return a normalized scene for Unity/mobile AR clients.
 
-    v0.3 adds an observer position plus precomputed distance/bearing for
-    each object. Current/OpenOil remain lightweight cached/demo objects.
+    v0.4 adds HUD-ready display fields and optional heading-based snapshot
+    calculations. Heavy environmental models are not started by this request.
     """
     if (observer_lat is None) != (observer_lon is None):
         raise HTTPException(
@@ -75,5 +85,6 @@ def get_ar_scene(
     return build_ar_scene(
         store.list_event_records(),
         observer=observer,
+        heading_deg=heading_deg,
         max_distance_km=max_distance_km,
     )

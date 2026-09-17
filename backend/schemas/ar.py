@@ -20,6 +20,18 @@ ARPriority = Literal[
     "critical",
 ]
 
+ARDirectionHint = Literal[
+    "left",
+    "center",
+    "right",
+]
+
+ARDistanceTier = Literal[
+    "near",
+    "medium",
+    "far",
+]
+
 
 class ARPosition(BaseModel):
     latitude: float = Field(ge=-90.0, le=90.0)
@@ -67,9 +79,15 @@ class ARObject(BaseModel):
     source_time: str | None = None
     evidence_count: int | None = Field(default=None, ge=0)
 
-    # Observer-relative geo fields for AR placement
+    # Observer-relative geo fields
     distance_m: float | None = Field(default=None, ge=0.0)
     bearing_deg: float | None = Field(default=None, ge=0.0, lt=360.0)
+
+    # HUD-ready display fields
+    distance_label: str | None = None
+    distance_tier: ARDistanceTier | None = None
+    relative_angle_deg: float | None = Field(default=None, ge=-180.0, le=180.0)
+    direction_hint: ARDirectionHint | None = None
 
     # Current-vector fields
     speed_m_s: float | None = Field(default=None, ge=0.0)
@@ -83,13 +101,15 @@ class ARObject(BaseModel):
 
 
 class ARScene(BaseModel):
+    contract_version: str = "0.4"
     scene_id: str
     generated_at: str
 
-    # Geographic focus retained for map/demo compatibility.
     center: ARPosition
-
-    # Initial observer position used to compute distance/bearing.
     observer: ARPosition | None = None
+
+    # Heading used for snapshot HUD calculations.
+    # Unity may recompute relative angle locally at frame rate.
+    heading_deg: float | None = Field(default=None, ge=0.0, lt=360.0)
 
     objects: list[ARObject] = Field(default_factory=list)

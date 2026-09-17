@@ -17,6 +17,15 @@ EARTH_RADIUS_M = 6_371_000.0
 DEFAULT_DEMO_LATITUDE = 44.7240
 DEFAULT_DEMO_LONGITUDE = 37.7691
 
+HUD_CENTER_HALF_ANGLE_DEG = 12.0
+NEAR_DISTANCE_M = 1_000.0
+MEDIUM_DISTANCE_M = 10_000.0
+
+# At effectively the same observer position, azimuth is undefined.
+# Treat it as centered in the HUD rather than deriving a fake left/right hint
+# from the device heading.
+COLOCATED_DISTANCE_EPSILON_M = 1.0
+
 CATEGORY_ICON_MAP = {
     "oil_spill": "oil_spill",
     "wildfire": "wildfire",
@@ -79,6 +88,10 @@ def calculate_distance_and_bearing(
 
     Bearing convention:
     0° = north, 90° = east, 180° = south, 270° = west.
+
+    For exactly co-located points, the mathematical bearing is undefined;
+    this function returns 0° for backwards compatibility. HUD logic handles
+    co-located objects explicitly.
     """
     lat1 = radians(observer.latitude)
     lon1 = radians(observer.longitude)
@@ -118,19 +131,106 @@ def calculate_distance_and_bearing(
     return distance_m, bearing_deg
 
 
+def calculate_relative_angle(
+    bearing_deg: float,
+    heading_deg: float,
+) -> float:
+    """
+    Signed shortest angular offset from camera/device heading to target.
+
+    Negative = left of heading.
+    Positive = right of heading.
+    Range = [-180, 180].
+    """
+    value = (
+        (bearing_deg - heading_deg + 540.0)
+        % 360.0
+    ) - 180.0
+
+    if value == -180.0:
+        return 180.0
+
+    return value
+
+
+def distance_label(distance_m: float) -> str:
+    """
+    Produce a compact human-readable label for the HUD.
+    """
+    if distance_m < 1_000.0:
+        return f"{int(round(distance_m))} m"
+
+    distance_km = distance_m / 1_000.0
+
+    if distance_km < 10.0:
+        return f"{distance_km:.1f} km"
+
+    return f"{int(round(distance_km))} km"
+
+
+def distance_tier(distance_m: float) -> str:
+    if distance_m <= NEAR_DISTANCE_M:
+        return "near"
+
+    if distance_m <= MEDIUM_DISTANCE_M:
+        return "medium"
+
+    return "far"
+
+
+def direction_hint(relative_angle_deg: float | None) -> str | None:
+    if relative_angle_deg is None:
+        return None
+
+    if abs(relative_angle_deg) <= HUD_CENTER_HALF_ANGLE_DEG:
+        return "center"
+
+    if relative_angle_deg < 0.0:
+        return "left"
+
+    return "right"
+
+
 def _apply_observer_metrics(
     ar_object: ARObject,
     observer: ARPosition,
+    heading_deg: float | None,
 ) -> ARObject:
     distance_m, bearing_deg = calculate_distance_and_bearing(
         observer,
         ar_object.position,
     )
 
+    relative_angle_deg = None
+    hud_direction_hint = None
+
+    if distance_m <= COLOCATED_DISTANCE_EPSILON_M:
+        # Direction has no useful meaning when observer and object occupy
+        # effectively the same position. Keep the object centered.
+        if heading_deg is not None:
+            relative_angle_deg = 0.0
+            hud_direction_hint = "center"
+    elif heading_deg is not None:
+        relative_angle_deg = calculate_relative_angle(
+            bearing_deg,
+            heading_deg,
+        )
+        hud_direction_hint = direction_hint(
+            relative_angle_deg
+        )
+
     return ar_object.model_copy(
         update={
             "distance_m": round(distance_m, 2),
             "bearing_deg": round(bearing_deg, 2),
+            "distance_label": distance_label(distance_m),
+            "distance_tier": distance_tier(distance_m),
+            "relative_angle_deg": (
+                round(relative_angle_deg, 2)
+                if relative_angle_deg is not None
+                else None
+            ),
+            "direction_hint": hud_direction_hint,
         }
     )
 
@@ -139,8 +239,8 @@ def event_record_to_ar_object(record: dict) -> ARObject | None:
     """
     Convert one canonical EventStore record to an AR incident.
 
-    Events without valid coordinates are intentionally skipped because
-    they cannot be placed in geospatial AR.
+    Events without valid coordinates are skipped because they cannot be
+    placed in geospatial AR.
     """
     location = record.get("location") or {}
 
@@ -239,18 +339,22 @@ def build_ar_scene(
     event_records: Iterable[dict],
     *,
     observer: ARPosition | None = None,
+    heading_deg: float | None = None,
     max_distance_km: float | None = None,
 ) -> ARScene:
     """
     Build the conference AR scene.
 
-    v0.3:
+    v0.4.1:
     - real canonical EventStore incidents;
     - cached/demo current and OpenOil forecast;
     - observer-relative distance/bearing;
+    - HUD-ready distance label/tier;
+    - optional snapshot heading -> relative angle / direction hint;
+    - co-located objects are centered instead of assigned a fake direction;
     - optional distance filter.
 
-    No heavy ocean model is started by this request.
+    The AR request never starts OpenOil/OceanDrift/Copernicus jobs.
     """
     scene_observer = observer or ARPosition(
         latitude=DEFAULT_DEMO_LATITUDE,
@@ -276,6 +380,7 @@ def build_ar_scene(
         with_metrics = _apply_observer_metrics(
             ar_object,
             scene_observer,
+            heading_deg,
         )
 
         if (
@@ -289,6 +394,7 @@ def build_ar_scene(
         objects.append(with_metrics)
 
     return ARScene(
+        contract_version="0.4",
         scene_id="black_sea_conference_scene_v3",
         generated_at=_utc_now_iso(),
         center=ARPosition(
@@ -296,13 +402,14 @@ def build_ar_scene(
             longitude=DEFAULT_DEMO_LONGITUDE,
         ),
         observer=scene_observer,
+        heading_deg=heading_deg,
         objects=objects,
     )
 
 
 def build_demo_ar_scene() -> ARScene:
     """
-    Backward-compatible v0.1 demo scene used by existing tests/tools.
+    Backward-compatible demo scene used by existing tests/tools.
     """
     demo_incident = ARObject(
         id="demo_incident_novorossiysk_001",
@@ -323,6 +430,7 @@ def build_demo_ar_scene() -> ARScene:
     )
 
     return ARScene(
+        contract_version="0.4",
         scene_id="novorossiysk_conference_demo_v1",
         generated_at=_utc_now_iso(),
         center=ARPosition(
