@@ -192,6 +192,103 @@ class EventStore:
                 )
             """)
 
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS satellite_observations (
+                    id TEXT PRIMARY KEY,
+
+                    information_type TEXT NOT NULL,
+                    derivation_level TEXT NOT NULL,
+                    observation_type TEXT NOT NULL,
+
+                    sensor TEXT NOT NULL,
+                    platform TEXT,
+                    dataset_id TEXT NOT NULL,
+                    source_image_id TEXT NOT NULL,
+
+                    acquisition_time TEXT NOT NULL,
+                    processing_time TEXT,
+
+                    geometry_geojson TEXT,
+
+                    bbox_min_lon REAL,
+                    bbox_min_lat REAL,
+                    bbox_max_lon REAL,
+                    bbox_max_lat REAL,
+
+                    confidence REAL,
+                    review_status TEXT NOT NULL,
+
+                    processing_version TEXT NOT NULL,
+                    processing_method TEXT,
+
+                    cache_reference TEXT,
+                    provenance_json TEXT,
+
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS event_satellite_observations (
+                    event_id TEXT NOT NULL,
+                    satellite_observation_id TEXT NOT NULL,
+
+                    relation_type TEXT NOT NULL,
+                    relation_confidence REAL,
+
+                    created_at TEXT NOT NULL,
+
+                    PRIMARY KEY (
+                        event_id,
+                        satellite_observation_id
+                    ),
+
+                    FOREIGN KEY(event_id)
+                        REFERENCES events(id),
+
+                    FOREIGN KEY(satellite_observation_id)
+                        REFERENCES satellite_observations(id)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS
+                idx_satellite_observations_acquisition_time
+                ON satellite_observations(acquisition_time)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS
+                idx_satellite_observations_type
+                ON satellite_observations(observation_type)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS
+                idx_satellite_observations_dataset
+                ON satellite_observations(dataset_id)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS
+                idx_satellite_observations_source_image
+                ON satellite_observations(source_image_id)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS
+                idx_satellite_observations_review_status
+                ON satellite_observations(review_status)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS
+                idx_event_satellite_event
+                ON event_satellite_observations(event_id)
+            """)
+
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS
                 idx_event_evidence_event_url
