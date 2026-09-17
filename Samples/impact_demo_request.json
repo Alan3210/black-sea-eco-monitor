@@ -1,0 +1,33 @@
+{
+  "proximity_threshold_km": 5.0,
+  "forecast": {
+    "model": "OpenDrift OceanDrift",
+    "scope": "passive_surface_tracer_current_only",
+    "horizons": [
+      {
+        "hours": 6,
+        "time": "2026-09-17T06:00:00+00:00",
+        "points": [
+          [
+            37.7691,
+            44.724
+          ],
+          [
+            37.8,
+            44.72
+          ]
+        ]
+      },
+      {
+        "hours": 12,
+        "time": "2026-09-17T12:00:00+00:00",
+        "points": [
+          [
+            37.86,
+            44.7
+          ]
+        ]
+      }
+    ]
+  }
+}
