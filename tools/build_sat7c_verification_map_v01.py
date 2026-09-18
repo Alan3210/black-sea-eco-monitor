@@ -841,8 +841,8 @@ def main() -> int:
         "pairwise_candidate_distances_km"
     ]:
         print(
-            f"  {item['candidate_a']} ↔ "
-            f"{item['candidate_b']}: "
+		f"  {item['candidate_a']} <-> "
+		f"{item['candidate_b']}: "
             f"{item['distance_km']:.2f} km"
         )
 
