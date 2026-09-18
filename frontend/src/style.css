@@ -1519,3 +1519,88 @@ h1 {
     animation-duration: 2.8s;
   }
 }
+
+/* ---------------------------------------------------------
+   SYSTEM-3 - Satellite candidates + unified context
+   --------------------------------------------------------- */
+
+.satellite-layer-symbol {
+  min-width: 30px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid rgba(207, 122, 255, 0.34);
+  border-radius: 6px;
+  background: rgba(186, 92, 255, 0.10);
+  color: #e0b1ff;
+  font-size: 7px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+
+.satellite-layer-note--loading {
+  color: rgba(224, 177, 255, 0.82);
+}
+
+.satellite-layer-note--error {
+  color: #ff9595;
+}
+
+.satellite-candidate-popup {
+  min-width: 235px;
+  padding: 14px;
+}
+
+.satellite-candidate-popup__title {
+  margin-bottom: 10px;
+  color: #e0b1ff;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+}
+
+.satellite-candidate-popup__row {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid rgba(224, 177, 255, 0.10);
+  font-size: 10px;
+}
+
+.satellite-candidate-popup__key {
+  color: rgba(232, 241, 247, 0.42);
+}
+
+.satellite-candidate-popup__value {
+  overflow-wrap: anywhere;
+  color: rgba(232, 241, 247, 0.92);
+  font-weight: 700;
+}
+
+.satellite-candidate-popup__disclaimer {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(224, 177, 255, 0.14);
+  color: rgba(224, 177, 255, 0.72);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.detail-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.detail-context-status {
+  margin-top: 8px;
+}
+
+@media (max-width: 720px) {
+  .detail-context-grid {
+    grid-template-columns: 1fr;
+  }
+}
+

@@ -428,6 +428,32 @@
             </div>
 
           <div class="filter-section">
+            <div class="filter-section__title" data-i18n="satellite.layers">
+              СПУТНИК
+            </div>
+
+            <label class="filter-check filter-check--layer">
+              <input
+                id="satellite-layer-toggle"
+                type="checkbox"
+              />
+              <span class="satellite-layer-symbol" aria-hidden="true">SAR</span>
+              <span data-i18n="satellite.candidates">
+                SAR-кандидаты
+              </span>
+            </label>
+
+            <div
+              id="satellite-layer-note"
+              class="filter-note satellite-layer-note"
+              aria-live="polite"
+              data-i18n="satellite.off"
+            >
+              Sentinel-1 · производные кандидаты
+            </div>
+          </div>
+
+          <div class="filter-section">
             <div class="filter-section__title" data-i18n="filters.timeWindow">ПЕРИОД</div>
             <div
               class="time-segmented"
@@ -440,7 +466,7 @@
                 <span data-i18n="filters.24h">24 Ч</span>
               </label>
               <label>
-                <input type="radio" name="time-window" value="7" checked />
+                <input type="radio" name="time-window" value="all" checked />
                 <span data-i18n="filters.7d">7 Д</span>
               </label>
               <label>

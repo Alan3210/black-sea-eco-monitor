@@ -77,6 +77,16 @@ import {
   longTaskViewModel,
 } from './longTask.js';
 
+import {
+  fetchSatelliteCandidates,
+  satelliteCandidateViewModel,
+} from './satellite.js';
+
+import {
+  fetchMonitorEventContext,
+  monitorContextViewModel,
+} from './monitorContext.js';
+
 const REFRESH_INTERVAL_MS = 60_000;
 const CURRENTS_REFRESH_INTERVAL_MS = 15 * 60_000;
 const CURRENTS_STRIDE = 10;
@@ -202,6 +212,13 @@ const driftParticlesValue = document.getElementById(
   'drift-particles-value',
 );
 
+const satelliteToggle = document.getElementById(
+  'satellite-layer-toggle',
+);
+const satelliteNote = document.getElementById(
+  'satellite-layer-note',
+);
+
 const eventPanel = document.getElementById('event-panel');
 const eventPanelContent = document.getElementById('event-panel-content');
 const closeEventPanelButton = document.getElementById('close-event-panel');
@@ -221,9 +238,16 @@ const timeInputs = [
 const eventsById = new Map();
 const evidenceCache = new Map();
 const evidenceRequests = new Map();
+const contextCache = new Map();
+const contextRequests = new Map();
+
 
 let allEvents = [];
 let visibleEvents = [];
+
+
+
+
 let visibleGroups = [];
 let groupMarkers = [];
 let lastSuccessfulUpdate = null;
@@ -295,6 +319,13 @@ let driftSeed = null;
 let driftPayload = null;
 let driftLoading = false;
 let driftErrorMessage = '';
+let satelliteCandidatesPayload = null;
+
+
+
+let satelliteCandidatesLoading = false;
+let satelliteCandidatesErrorMessage = '';
+let satellitePopup = null;
 
 let currentsLoadingStartedAt = null;
 let driftLoadingStartedAt = null;
@@ -809,6 +840,59 @@ function makeBackToGroupButton(group) {
   return button;
 }
 
+function loadContext(eventId) {
+  if (contextCache.has(eventId)) {
+    return Promise.resolve(
+      contextCache.get(eventId),
+    );
+  }
+
+  if (contextRequests.has(eventId)) {
+    return contextRequests.get(eventId);
+  }
+
+  const request = fetchMonitorEventContext(eventId)
+    .then((context) => {
+      contextCache.set(eventId, context);
+      return context;
+    })
+    .finally(() => {
+      contextRequests.delete(eventId);
+    });
+
+  contextRequests.set(eventId, request);
+  return request;
+}
+
+function renderContextGrid(container, context) {
+  container.replaceChildren();
+
+  const vm = monitorContextViewModel(context);
+  const yesNo = (value) => t(
+    currentLanguage,
+    value ? 'panel.ready' : 'panel.unavailable',
+  );
+
+  container.append(
+    makeMetric(
+      t(currentLanguage, 'panel.satelliteObservations'),
+      String(vm.satelliteCount),
+    ),
+    makeMetric(
+      t(currentLanguage, 'panel.driftReady'),
+      yesNo(vm.driftReady),
+    ),
+    makeMetric(
+      t(currentLanguage, 'panel.impactReady'),
+      yesNo(vm.impactReady),
+    ),
+    makeMetric(
+      t(currentLanguage, 'panel.arReady'),
+      yesNo(vm.arReady),
+    ),
+  );
+}
+
 function renderEventPanel(event, originGroupId = null) {
   const token = ++panelRenderToken;
   const vm = eventDetailsViewModel(event, currentLanguage);
@@ -1016,12 +1100,41 @@ function renderEventPanel(event, originGroupId = null) {
     evidenceList,
   );
 
+  const contextSection = makeElement(
+    'section',
+    'detail-section',
+  );
+
+  contextSection.append(
+    makeElement(
+      'div',
+      'detail-section__title',
+      t(currentLanguage, 'panel.systemContext'),
+    ),
+  );
+
+  const contextGrid = makeElement(
+    'div',
+    'detail-context-grid',
+  );
+
+  contextGrid.append(
+    makeElement(
+      'div',
+      'evidence-loading detail-context-status',
+      t(currentLanguage, 'panel.contextLoading'),
+    ),
+  );
+
+  contextSection.append(contextGrid);
+
   eventPanelContent.append(
     header,
     pills,
     metrics,
     locationQuality,
     timeline,
+    contextSection,
     evidenceSection,
   );
 
@@ -1033,6 +1146,41 @@ function renderEventPanel(event, originGroupId = null) {
     'aria-hidden',
     'false',
   );
+
+  loadContext(event.id)
+    .then((context) => {
+      if (
+        token !== panelRenderToken
+        || selectedEventId !== event.id
+      ) {
+        return;
+      }
+
+      renderContextGrid(
+        contextGrid,
+        context,
+      );
+    })
+    .catch((error) => {
+      if (
+        token !== panelRenderToken
+        || selectedEventId !== event.id
+      ) {
+        return;
+      }
+
+      contextGrid.replaceChildren(
+        makeElement(
+          'div',
+          'evidence-error detail-context-status',
+          t(
+            currentLanguage,
+            'panel.contextUnavailable',
+            { message: error.message },
+          ),
+        ),
+      );
+    });
 
   loadEvidence(event.id)
     .then((rows) => {
@@ -2589,6 +2737,310 @@ map.on(
 );
 
 
+function satelliteLayerVisible() {
+  return Boolean(satelliteToggle?.checked);
+}
+
+function setSatelliteLayerVisibility(visible) {
+  const visibility = visible
+    ? 'visible'
+    : 'none';
+
+  for (const layerId of [
+    'satellite-candidates-fill',
+    'satellite-candidates-line',
+  ]) {
+    if (map.getLayer(layerId)) {
+      map.setLayoutProperty(
+        layerId,
+        'visibility',
+        visibility,
+      );
+    }
+  }
+
+  if (!visible && satellitePopup) {
+    satellitePopup.remove();
+    satellitePopup = null;
+  }
+}
+
+function renderSatelliteStatus() {
+  if (!satelliteNote) return;
+
+  satelliteNote.classList.toggle(
+    'satellite-layer-note--loading',
+    satelliteCandidatesLoading,
+  );
+  satelliteNote.classList.toggle(
+    'satellite-layer-note--error',
+    Boolean(satelliteCandidatesErrorMessage),
+  );
+
+  if (!satelliteLayerVisible()) {
+    satelliteNote.textContent = t(
+      currentLanguage,
+      'satellite.off',
+    );
+    return;
+  }
+
+  if (satelliteCandidatesLoading) {
+    satelliteNote.textContent = t(
+      currentLanguage,
+      'satellite.loading',
+    );
+    return;
+  }
+
+  if (satelliteCandidatesErrorMessage) {
+    satelliteNote.textContent = t(
+      currentLanguage,
+      'satellite.error',
+      {
+        message: satelliteCandidatesErrorMessage,
+      },
+    );
+    return;
+  }
+
+  satelliteNote.textContent = t(
+    currentLanguage,
+    'satellite.ready',
+    {
+      count: satelliteCandidatesPayload?.features?.length ?? 0,
+    },
+  );
+}
+
+function makeSatellitePopupContent(feature) {
+  const vm = satelliteCandidateViewModel(feature);
+  const root = makeElement(
+    'div',
+    'satellite-candidate-popup',
+  );
+
+  root.append(
+    makeElement(
+      'div',
+      'satellite-candidate-popup__title',
+      t(currentLanguage, 'satellite.popupTitle'),
+    ),
+  );
+
+  const rows = [
+    [
+      t(currentLanguage, 'satellite.area'),
+      vm.areaKm2 == null
+        ? '—'
+        : `${vm.areaKm2.toFixed(5)} km²`,
+    ],
+    [
+      t(currentLanguage, 'satellite.meanVv'),
+      vm.meanVvDb == null
+        ? '—'
+        : `${vm.meanVvDb.toFixed(2)} dB`,
+    ],
+    [
+      t(currentLanguage, 'satellite.threshold'),
+      vm.thresholdDb == null
+        ? '—'
+        : `${vm.thresholdDb.toFixed(1)} dB`,
+    ],
+    [
+      t(currentLanguage, 'satellite.reviewStatus'),
+      vm.reviewStatus,
+    ],
+  ];
+
+  for (const [label, value] of rows) {
+    const row = makeElement(
+      'div',
+      'satellite-candidate-popup__row',
+    );
+    row.append(
+      makeElement(
+        'div',
+        'satellite-candidate-popup__key',
+        label,
+      ),
+      makeElement(
+        'div',
+        'satellite-candidate-popup__value',
+        value,
+      ),
+    );
+    root.append(row);
+  }
+
+  root.append(
+    makeElement(
+      'div',
+      'satellite-candidate-popup__disclaimer',
+      t(currentLanguage, 'satellite.disclaimer'),
+    ),
+  );
+
+  return root;
+}
+
+function installSatelliteLayer() {
+  map.addSource(
+    'satellite-candidates',
+    {
+      type: 'geojson',
+      data: emptyFeatureCollection(),
+    },
+  );
+
+  map.addLayer({
+    id: 'satellite-candidates-fill',
+    type: 'fill',
+    source: 'satellite-candidates',
+    layout: {
+      visibility: 'none',
+    },
+    paint: {
+      'fill-color': '#c77dff',
+      'fill-opacity': 0.22,
+    },
+  });
+
+  map.addLayer({
+    id: 'satellite-candidates-line',
+    type: 'line',
+    source: 'satellite-candidates',
+    layout: {
+      visibility: 'none',
+    },
+    paint: {
+      'line-color': '#e0aaff',
+      'line-width': 2.2,
+      'line-opacity': 0.95,
+    },
+  });
+
+  map.on(
+    'mouseenter',
+    'satellite-candidates-fill',
+    () => {
+      map.getCanvas().style.cursor = 'pointer';
+    },
+  );
+
+  map.on(
+    'mouseleave',
+    'satellite-candidates-fill',
+    () => {
+      map.getCanvas().style.cursor = '';
+    },
+  );
+
+  map.on(
+    'click',
+    'satellite-candidates-fill',
+    (event) => {
+      if (
+        driftSelectionActive
+        || driftSelectionJustConsumed
+      ) return;
+
+      const feature = event.features?.[0];
+
+      if (!feature) return;
+
+      if (satellitePopup) {
+        satellitePopup.remove();
+      }
+
+      satellitePopup = new maplibregl.Popup({
+        closeButton: true,
+        closeOnClick: true,
+        offset: 10,
+      })
+        .setLngLat(event.lngLat)
+        .setDOMContent(
+          makeSatellitePopupContent(feature),
+        )
+        .addTo(map);
+    },
+  );
+}
+
+async function refreshSatelliteCandidates() {
+  if (
+    !satelliteLayerVisible()
+    || satelliteCandidatesLoading
+  ) {
+    return;
+  }
+
+  satelliteCandidatesLoading = true;
+  satelliteCandidatesErrorMessage = '';
+  renderSatelliteStatus();
+
+  try {
+    const payload = await fetchSatelliteCandidates();
+
+    satelliteCandidatesPayload = payload;
+
+    setGeoJSONSourceData(
+      'satellite-candidates',
+      payload,
+    );
+
+    if (payload.features.length) {
+  const bounds = new maplibregl.LngLatBounds();
+
+  for (const feature of payload.features) {
+    const coords = feature.geometry.coordinates.flat(10);
+
+    for (let i = 0; i < coords.length; i += 2) {
+      bounds.extend([
+        coords[i],
+        coords[i + 1],
+      ]);
+    }
+  }
+
+  map.fitBounds(bounds, {
+    padding: 120,
+    maxZoom: 13,
+    duration: 1200,
+  });
+}
+
+    setSatelliteLayerVisibility(true);
+  } catch (error) {
+    console.error(
+      '[Black Sea Eco Monitor / satellite]',
+      error,
+    );
+    satelliteCandidatesErrorMessage =
+      error?.message || String(error);
+
+    if (!satelliteCandidatesPayload) {
+      setSatelliteLayerVisibility(false);
+    }
+  } finally {
+    satelliteCandidatesLoading = false;
+    renderSatelliteStatus();
+  }
+}
+
+satelliteToggle?.addEventListener(
+  'change',
+  () => {
+    if (satelliteLayerVisible()) {
+      setSatelliteLayerVisibility(true);
+      void refreshSatelliteCandidates();
+    } else {
+      setSatelliteLayerVisibility(false);
+      renderSatelliteStatus();
+    }
+  },
+);
+
 function localizeStaticDom() {
   document.documentElement.lang = currentLanguage;
   document.title = t(
@@ -2694,6 +3146,7 @@ function applyLanguage(language) {
   renderCurrentDisplayControls();
   renderLongTaskUX();
   renderDriftControls();
+  renderSatelliteStatus();
 
   if (currentsPopup) {
     currentsPopup.remove();
@@ -2860,12 +3313,14 @@ map.on('click', (event) => {
 
 map.on('load', () => {
   installRegionalFocus(map);
+  installSatelliteLayer();
   installEventLayer();
   installCurrentLayer();
   installDriftLayer();
   renderCurrentsStatus();
   renderCurrentDisplayControls();
   renderDriftControls();
+  renderSatelliteStatus();
 
   void refreshEvents();
 
