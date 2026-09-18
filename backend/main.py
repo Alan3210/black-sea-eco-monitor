@@ -15,6 +15,10 @@ from backend.api.satellite_observations import (
     router as satellite_observations_router,
 )
 
+from backend.api.monitor_dashboard import (
+    router as monitor_dashboard_router,
+)
+
 from backend.database.database import engine, Base
 from backend.database import models
 
@@ -78,6 +82,14 @@ app.include_router(
     satellite_observations_router,
     prefix="/satellite/observations",
     tags=["satellite"],
+)
+
+
+
+app.include_router(
+    monitor_dashboard_router,
+    prefix="/monitor/dashboard",
+    tags=["monitor"],
 )
 
 
