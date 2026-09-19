@@ -228,3 +228,6 @@ debug-results/
 dev-snapshots/
 test_database.db
 validation/
+
+# Runtime weather cache
+data/cache/weather/
