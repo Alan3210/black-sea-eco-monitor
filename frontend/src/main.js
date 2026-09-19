@@ -59,6 +59,15 @@ import {
 } from './currentParticles.js';
 
 import {
+  WindParticleEngine,
+  normalizeWindDisplayMode,
+  normalizeWindParticleCount,
+  normalizeWindParticleSpeedPercent,
+  normalizeWindParticleTrailPercent,
+  normalizeWindParticleSizePercent,
+} from './windParticles.js';
+
+import {
   DEFAULT_DRIFT_FORCING_MODE,
   DEFAULT_DRIFT_HORIZON,
   DEFAULT_DRIFT_PARTICLES,
@@ -120,6 +129,16 @@ const WIND_REFRESH_INTERVAL_MS = 15 * 60_000;
 const WIND_STRIDE = 2;
 const WIND_ARROW_SIZE_STORAGE_KEY =
   'black-sea-eco-monitor.wind-arrow-size';
+const WIND_DISPLAY_MODE_STORAGE_KEY =
+  'black-sea-eco-monitor.wind-display-mode';
+const WIND_PARTICLE_COUNT_STORAGE_KEY =
+  'black-sea-eco-monitor.wind-particle-count';
+const WIND_PARTICLE_SPEED_STORAGE_KEY =
+  'black-sea-eco-monitor.wind-particle-speed';
+const WIND_PARTICLE_TRAIL_STORAGE_KEY =
+  'black-sea-eco-monitor.wind-particle-trail';
+const WIND_PARTICLE_SIZE_STORAGE_KEY =
+  'black-sea-eco-monitor.wind-particle-size';
 const CURRENT_ARROW_SIZE_STORAGE_KEY =
   'black-sea-eco-monitor.current-arrow-size';
 
@@ -187,6 +206,48 @@ const windArrowSizeSlider = document.getElementById(
 );
 const windArrowSizeValue = document.getElementById(
   'wind-arrow-size-value',
+);
+
+const windDisplayModeInputs = [
+  ...document.querySelectorAll(
+    'input[name="wind-display-mode"]',
+  ),
+];
+
+const windParticleControls = document.getElementById(
+  'wind-particle-controls',
+);
+
+const windParticleCountSlider = document.getElementById(
+  'wind-particle-count',
+);
+
+const windParticleCountValue = document.getElementById(
+  'wind-particle-count-value',
+);
+
+const windParticleSpeedSlider = document.getElementById(
+  'wind-particle-speed',
+);
+
+const windParticleSpeedValue = document.getElementById(
+  'wind-particle-speed-value',
+);
+
+const windParticleTrailSlider = document.getElementById(
+  'wind-particle-trail',
+);
+
+const windParticleTrailValue = document.getElementById(
+  'wind-particle-trail-value',
+);
+
+const windParticleSizeSlider = document.getElementById(
+  'wind-particle-size',
+);
+
+const windParticleSizeValue = document.getElementById(
+  'wind-particle-size-value',
 );
 
 const currentDisplayModeInputs = [
@@ -330,6 +391,58 @@ let windArrowSizePercent =
     ),
     100,
   );
+
+let windDisplayMode =
+  normalizeWindDisplayMode(
+    window.localStorage.getItem(
+      WIND_DISPLAY_MODE_STORAGE_KEY,
+    ),
+    'arrows',
+  );
+
+let windParticleCount =
+  normalizeWindParticleCount(
+    window.localStorage.getItem(
+      WIND_PARTICLE_COUNT_STORAGE_KEY,
+    ),
+    (
+      navigator.hardwareConcurrency
+      && navigator.hardwareConcurrency <= 4
+    )
+      ? 700
+      : (
+        navigator.hardwareConcurrency
+        && navigator.hardwareConcurrency <= 8
+      )
+        ? 1000
+        : 1400,
+  );
+
+let windParticleSpeedPercent =
+  normalizeWindParticleSpeedPercent(
+    window.localStorage.getItem(
+      WIND_PARTICLE_SPEED_STORAGE_KEY,
+    ),
+    100,
+  );
+
+let windParticleTrailPercent =
+  normalizeWindParticleTrailPercent(
+    window.localStorage.getItem(
+      WIND_PARTICLE_TRAIL_STORAGE_KEY,
+    ),
+    55,
+  );
+
+let windParticleSizePercent =
+  normalizeWindParticleSizePercent(
+    window.localStorage.getItem(
+      WIND_PARTICLE_SIZE_STORAGE_KEY,
+    ),
+    120,
+  );
+
+let windParticleEngine = null;
 
 let currentArrowSizePercent =
   normalizeCurrentArrowSizePercent(
@@ -3500,6 +3613,248 @@ currentsToggle?.addEventListener(
 );
 
 
+// WEATHER-1.5C · animated ECMWF IFS 10 m wind particles.
+function windModeShowsArrows() {
+  return [
+    'arrows',
+    'both',
+  ].includes(
+    windDisplayMode,
+  );
+}
+
+
+function windModeShowsParticles() {
+  return [
+    'particles',
+    'both',
+  ].includes(
+    windDisplayMode,
+  );
+}
+
+
+function renderWindDisplayControls() {
+  for (
+    const input
+    of windDisplayModeInputs
+  ) {
+    input.checked =
+      input.value
+      === windDisplayMode;
+  }
+
+  if (windParticleCountSlider) {
+    windParticleCountSlider.value =
+      String(
+        windParticleCount,
+      );
+  }
+
+  if (windParticleCountValue) {
+    windParticleCountValue.textContent =
+      String(
+        windParticleCount,
+      );
+  }
+
+  if (windParticleSpeedSlider) {
+    windParticleSpeedSlider.value =
+      String(
+        windParticleSpeedPercent,
+      );
+  }
+
+  if (windParticleSpeedValue) {
+    windParticleSpeedValue.textContent =
+      `${windParticleSpeedPercent}%`;
+  }
+
+  if (windParticleTrailSlider) {
+    windParticleTrailSlider.value =
+      String(
+        windParticleTrailPercent,
+      );
+  }
+
+  if (windParticleTrailValue) {
+    windParticleTrailValue.textContent =
+      `${windParticleTrailPercent}%`;
+  }
+
+  if (windParticleSizeSlider) {
+    windParticleSizeSlider.value =
+      String(
+        windParticleSizePercent,
+      );
+  }
+
+  if (windParticleSizeValue) {
+    windParticleSizeValue.textContent =
+      `${windParticleSizePercent}%`;
+  }
+
+  const particlesEnabled =
+    windModeShowsParticles();
+
+  windParticleControls
+    ?.classList.toggle(
+      'particle-controls--disabled',
+      !particlesEnabled,
+    );
+
+  for (
+    const input
+    of [
+      windParticleCountSlider,
+      windParticleSpeedSlider,
+      windParticleTrailSlider,
+      windParticleSizeSlider,
+    ]
+  ) {
+    if (input) {
+      input.disabled =
+        !particlesEnabled;
+    }
+  }
+
+  const arrowControl =
+    windArrowSizeSlider
+      ?.closest(
+        '.current-size-control',
+      );
+
+  arrowControl?.classList.toggle(
+    'current-size-control--disabled',
+    !windModeShowsArrows(),
+  );
+
+  if (windArrowSizeSlider) {
+    windArrowSizeSlider.disabled =
+      !windModeShowsArrows();
+  }
+}
+
+
+function ensureWindParticleEngine() {
+  if (windParticleEngine) {
+    return windParticleEngine;
+  }
+
+  const mapCanvasContainer =
+    map.getCanvasContainer();
+
+  const canvas =
+    document.createElement(
+      'canvas',
+    );
+
+  canvas.id =
+    'wind-particles-canvas';
+
+  canvas.className =
+    'wind-particles-canvas';
+
+  canvas.setAttribute(
+    'aria-hidden',
+    'true',
+  );
+
+  mapCanvasContainer.append(
+    canvas,
+  );
+
+  windParticleEngine =
+    new WindParticleEngine({
+      canvas,
+      map,
+      particleCount:
+        windParticleCount,
+      speedPercent:
+        windParticleSpeedPercent,
+      trailPercent:
+        windParticleTrailPercent,
+      sizePercent:
+        windParticleSizePercent,
+    });
+
+  if (windPayload) {
+    windParticleEngine.setField(
+      windPayload,
+    );
+  }
+
+  return windParticleEngine;
+}
+
+
+function syncWindVisualization() {
+  renderWindDisplayControls();
+
+  const layerEnabled =
+    windLayerVisible();
+
+  const arrowVisibility =
+    (
+      layerEnabled
+      && windModeShowsArrows()
+    )
+      ? 'visible'
+      : 'none';
+
+  if (
+    map.getLayer(
+      'weather-wind-arrows',
+    )
+  ) {
+    map.setLayoutProperty(
+      'weather-wind-arrows',
+      'visibility',
+      arrowVisibility,
+    );
+  }
+
+  if (
+    !layerEnabled
+    || !windModeShowsParticles()
+    || !windPayload
+    || document.hidden
+    || mapIsMoving
+  ) {
+    windParticleEngine?.stop();
+  } else {
+    const engine =
+      ensureWindParticleEngine();
+
+    engine.setParticleCount(
+      windParticleCount,
+    );
+
+    engine.setSpeedPercent(
+      windParticleSpeedPercent,
+    );
+
+    engine.setTrailPercent(
+      windParticleTrailPercent,
+    );
+
+    engine.setSizePercent(
+      windParticleSizePercent,
+    );
+
+    engine.start();
+  }
+
+  if (
+    !layerEnabled
+    && windPopup
+  ) {
+    windPopup.remove();
+    windPopup = null;
+  }
+}
+
+
 // WEATHER-1.5B · ECMWF IFS 10 m wind visualization.
 function createWindArrowImage() {
   const size = 96;
@@ -3609,7 +3964,10 @@ function setWindLayerVisibility(
   visible,
 ) {
   const visibility =
-    visible
+    (
+      visible
+      && windModeShowsArrows()
+    )
       ? 'visible'
       : 'none';
 
@@ -3625,12 +3983,13 @@ function setWindLayerVisibility(
     );
   }
 
-  if (
-    !visible
-    && windPopup
-  ) {
-    windPopup.remove();
-    windPopup = null;
+  if (!visible) {
+    windParticleEngine?.stop();
+
+    if (windPopup) {
+      windPopup.remove();
+      windPopup = null;
+    }
   }
 }
 
@@ -4064,6 +4423,12 @@ async function refreshWind() {
 
     windPayload = payload;
 
+    if (windParticleEngine) {
+      windParticleEngine.setField(
+        payload,
+      );
+    }
+
     const source =
       map.getSource(
         'weather-wind',
@@ -4077,9 +4442,7 @@ async function refreshWind() {
       );
     }
 
-    setWindLayerVisibility(
-      true,
-    );
+    syncWindVisualization();
   } catch (error) {
     console.error(
       '[Black Sea Eco Monitor / wind]',
@@ -4099,6 +4462,140 @@ async function refreshWind() {
     renderWindStatus();
   }
 }
+
+
+for (
+  const input
+  of windDisplayModeInputs
+) {
+  input.addEventListener(
+    'change',
+    () => {
+      if (!input.checked) {
+        return;
+      }
+
+      windDisplayMode =
+        normalizeWindDisplayMode(
+          input.value,
+        );
+
+      window.localStorage.setItem(
+        WIND_DISPLAY_MODE_STORAGE_KEY,
+        windDisplayMode,
+      );
+
+      syncWindVisualization();
+    },
+  );
+}
+
+
+windParticleCountSlider
+  ?.addEventListener(
+    'input',
+    () => {
+      windParticleCount =
+        normalizeWindParticleCount(
+          windParticleCountSlider.value,
+        );
+
+      window.localStorage.setItem(
+        WIND_PARTICLE_COUNT_STORAGE_KEY,
+        String(
+          windParticleCount,
+        ),
+      );
+
+      windParticleEngine
+        ?.setParticleCount(
+          windParticleCount,
+        );
+
+      renderWindDisplayControls();
+    },
+  );
+
+
+windParticleSpeedSlider
+  ?.addEventListener(
+    'input',
+    () => {
+      windParticleSpeedPercent =
+        normalizeWindParticleSpeedPercent(
+          windParticleSpeedSlider.value,
+        );
+
+      window.localStorage.setItem(
+        WIND_PARTICLE_SPEED_STORAGE_KEY,
+        String(
+          windParticleSpeedPercent,
+        ),
+      );
+
+      windParticleEngine
+        ?.setSpeedPercent(
+          windParticleSpeedPercent,
+        );
+
+      renderWindDisplayControls();
+    },
+  );
+
+
+windParticleTrailSlider
+  ?.addEventListener(
+    'input',
+    () => {
+      windParticleTrailPercent =
+        normalizeWindParticleTrailPercent(
+          windParticleTrailSlider.value,
+        );
+
+      window.localStorage.setItem(
+        WIND_PARTICLE_TRAIL_STORAGE_KEY,
+        String(
+          windParticleTrailPercent,
+        ),
+      );
+
+      windParticleEngine
+        ?.setTrailPercent(
+          windParticleTrailPercent,
+        );
+
+      renderWindDisplayControls();
+    },
+  );
+
+
+windParticleSizeSlider
+  ?.addEventListener(
+    'input',
+    () => {
+      windParticleSizePercent =
+        normalizeWindParticleSizePercent(
+          windParticleSizeSlider.value,
+        );
+
+      window.localStorage.setItem(
+        WIND_PARTICLE_SIZE_STORAGE_KEY,
+        String(
+          windParticleSizePercent,
+        ),
+      );
+
+      windParticleEngine
+        ?.setSizePercent(
+          windParticleSizePercent,
+        );
+
+      renderWindDisplayControls();
+    },
+  );
+
+
+renderWindDisplayControls();
 
 
 windArrowSizeSlider
@@ -4130,16 +4627,10 @@ windToggle?.addEventListener(
   'change',
   () => {
     if (windLayerVisible()) {
-      setWindLayerVisibility(
-        true,
-      );
-
+      syncWindVisualization();
       void refreshWind();
     } else {
-      setWindLayerVisibility(
-        false,
-      );
-
+      syncWindVisualization();
       renderWindStatus();
     }
   },
@@ -4150,6 +4641,7 @@ document.addEventListener(
   'visibilitychange',
   () => {
     syncCurrentVisualization();
+    syncWindVisualization();
   },
 );
 
@@ -4159,6 +4651,7 @@ map.on(
   () => {
     mapIsMoving = true;
     currentParticleEngine?.stop();
+    windParticleEngine?.stop();
   },
 );
 
@@ -4167,6 +4660,7 @@ map.on(
   'move',
   () => {
     currentParticleEngine?.clear();
+    windParticleEngine?.clear();
   },
 );
 
@@ -4176,7 +4670,9 @@ map.on(
   () => {
     mapIsMoving = false;
     currentParticleEngine?.resize();
+    windParticleEngine?.resize();
     syncCurrentVisualization();
+    syncWindVisualization();
   },
 );
 
@@ -4185,6 +4681,7 @@ map.on(
   'resize',
   () => {
     currentParticleEngine?.resize();
+    windParticleEngine?.resize();
   },
 );
 
@@ -4844,6 +5341,7 @@ map.on('load', () => {
   renderCurrentsStatus();
   renderCurrentDisplayControls();
   renderWindStatus();
+  renderWindDisplayControls();
   renderDriftControls();
   renderSatelliteStatus();
 

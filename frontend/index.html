@@ -409,6 +409,164 @@
               />
             </div>
 
+            <div class="ocean-display-control wind-display-control">
+              <div
+                class="current-size-control__header"
+                data-i18n="weather.displayMode"
+              >
+                Отображение
+              </div>
+
+              <div
+                class="ocean-mode-grid wind-mode-grid"
+                role="radiogroup"
+                aria-label="Режим отображения ветра"
+                data-i18n-aria-label="weather.displayModeAria"
+              >
+                <label>
+                  <input
+                    type="radio"
+                    name="wind-display-mode"
+                    value="arrows"
+                    checked
+                  />
+                  <span data-i18n="weather.modeArrows">Стрелки</span>
+                </label>
+
+                <label>
+                  <input
+                    type="radio"
+                    name="wind-display-mode"
+                    value="particles"
+                  />
+                  <span data-i18n="weather.modeParticles">Частицы</span>
+                </label>
+
+                <label>
+                  <input
+                    type="radio"
+                    name="wind-display-mode"
+                    value="both"
+                  />
+                  <span data-i18n="weather.modeBoth">Стрелки + частицы</span>
+                </label>
+              </div>
+            </div>
+
+            <div
+              id="wind-particle-controls"
+              class="particle-controls wind-particle-controls"
+            >
+              <div class="current-size-control">
+                <div class="current-size-control__header">
+                  <span data-i18n="weather.particleCount">
+                    Количество частиц
+                  </span>
+                  <output
+                    id="wind-particle-count-value"
+                    class="current-size-control__value"
+                    for="wind-particle-count"
+                  >
+                    1200
+                  </output>
+                </div>
+
+                <input
+                  id="wind-particle-count"
+                  class="current-size-control__slider"
+                  type="range"
+                  min="400"
+                  max="2400"
+                  step="100"
+                  value="1200"
+                  data-i18n-aria-label="weather.particleCountAria"
+                  aria-label="Количество частиц ветра"
+                />
+              </div>
+
+              <div class="current-size-control">
+                <div class="current-size-control__header">
+                  <span data-i18n="weather.particleSpeed">
+                    Скорость анимации
+                  </span>
+                  <output
+                    id="wind-particle-speed-value"
+                    class="current-size-control__value"
+                    for="wind-particle-speed"
+                  >
+                    100%
+                  </output>
+                </div>
+
+                <input
+                  id="wind-particle-speed"
+                  class="current-size-control__slider"
+                  type="range"
+                  min="50"
+                  max="200"
+                  step="10"
+                  value="100"
+                  data-i18n-aria-label="weather.particleSpeedAria"
+                  aria-label="Скорость анимации ветра"
+                />
+              </div>
+
+              <div class="current-size-control">
+                <div class="current-size-control__header">
+                  <span data-i18n="weather.particleTrail">
+                    Длина следа
+                  </span>
+                  <output
+                    id="wind-particle-trail-value"
+                    class="current-size-control__value"
+                    for="wind-particle-trail"
+                  >
+                    55%
+                  </output>
+                </div>
+
+                <input
+                  id="wind-particle-trail"
+                  class="current-size-control__slider"
+                  type="range"
+                  min="10"
+                  max="100"
+                  step="10"
+                  value="55"
+                  data-i18n-aria-label="weather.particleTrailAria"
+                  aria-label="Длина следа частиц ветра"
+                />
+              </div>
+
+
+              <div class="current-size-control">
+                <div class="current-size-control__header">
+                  <span data-i18n="weather.particleSize">
+                    Размер частиц
+                  </span>
+                  <output
+                    id="wind-particle-size-value"
+                    class="current-size-control__value"
+                    for="wind-particle-size"
+                  >
+                    120%
+                  </output>
+                </div>
+
+                <input
+                  id="wind-particle-size"
+                  class="current-size-control__slider"
+                  type="range"
+                  min="60"
+                  max="200"
+                  step="10"
+                  value="120"
+                  data-i18n-aria-label="weather.particleSizeAria"
+                  aria-label="Размер частиц ветра"
+                />
+              </div>
+            </div>
+
             <div
               class="filter-note weather-wind-semantics"
               data-i18n="weather.directionNote"
