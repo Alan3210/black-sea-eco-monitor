@@ -1774,3 +1774,85 @@ h1 {
   }
 }
 
+/* ---------------------------------------------------------
+   WEATHER-1.5B · ECMWF 10 m wind arrows
+   --------------------------------------------------------- */
+
+.wind-layer-symbol {
+  width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid rgba(125, 211, 252, 0.30);
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.10);
+  color: #7dd3fc;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.weather-wind-note {
+  min-height: 30px;
+  line-height: 1.45;
+}
+
+.weather-wind-note--loading {
+  color: rgba(125, 211, 252, 0.88);
+}
+
+.weather-wind-note--error {
+  color: #ff9595;
+}
+
+.weather-wind-semantics {
+  margin-top: 8px;
+  color: rgba(232, 241, 247, 0.48);
+  line-height: 1.45;
+}
+
+.wind-size-control .current-size-control__value {
+  color: #7dd3fc;
+}
+
+.wind-size-control .current-size-control__slider {
+  accent-color: #38bdf8;
+}
+
+.wind-size-control .current-size-control__slider::-webkit-slider-runnable-track {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(56, 189, 248, 0.95),
+      rgba(167, 243, 208, 0.88)
+    );
+}
+
+.wind-size-control .current-size-control__slider::-webkit-slider-thumb {
+  background: #7dd3fc;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.20),
+    0 0 10px rgba(56, 189, 248, 0.36);
+}
+
+.wind-size-control .current-size-control__slider::-moz-range-track {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(56, 189, 248, 0.95),
+      rgba(167, 243, 208, 0.88)
+    );
+}
+
+.wind-size-control .current-size-control__slider::-moz-range-thumb {
+  background: #7dd3fc;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.20),
+    0 0 10px rgba(56, 189, 248, 0.36);
+}
+
+.wind-popup .ocean-current-popup__title {
+  color: #7dd3fc;
+}
+

@@ -43,6 +43,14 @@ import {
 } from './currents.js';
 
 import {
+  fetchWindField,
+  formatWindSpeed,
+  normalizeWindArrowSizePercent,
+  windArrowSizeExpression,
+  windToFeatureCollection,
+} from './wind.js';
+
+import {
   CurrentParticleEngine,
   normalizeCurrentDisplayMode,
   normalizeParticleCount,
@@ -108,6 +116,10 @@ import {
 const REFRESH_INTERVAL_MS = 60_000;
 const CURRENTS_REFRESH_INTERVAL_MS = 15 * 60_000;
 const CURRENTS_STRIDE = 10;
+const WIND_REFRESH_INTERVAL_MS = 15 * 60_000;
+const WIND_STRIDE = 2;
+const WIND_ARROW_SIZE_STORAGE_KEY =
+  'black-sea-eco-monitor.wind-arrow-size';
 const CURRENT_ARROW_SIZE_STORAGE_KEY =
   'black-sea-eco-monitor.current-arrow-size';
 
@@ -162,6 +174,19 @@ const currentsArrowSizeSlider = document.getElementById(
 );
 const currentsArrowSizeValue = document.getElementById(
   'currents-arrow-size-value',
+);
+
+const windToggle = document.getElementById(
+  'wind-layer-toggle',
+);
+const windNote = document.getElementById(
+  'wind-layer-note',
+);
+const windArrowSizeSlider = document.getElementById(
+  'wind-arrow-size',
+);
+const windArrowSizeValue = document.getElementById(
+  'wind-arrow-size-value',
 );
 
 const currentDisplayModeInputs = [
@@ -292,6 +317,19 @@ let currentsPayload = null;
 let currentsLoading = false;
 let currentsErrorMessage = '';
 let currentsPopup = null;
+
+let windPayload = null;
+let windLoading = false;
+let windErrorMessage = '';
+let windPopup = null;
+
+let windArrowSizePercent =
+  normalizeWindArrowSizePercent(
+    window.localStorage.getItem(
+      WIND_ARROW_SIZE_STORAGE_KEY,
+    ),
+    100,
+  );
 
 let currentArrowSizePercent =
   normalizeCurrentArrowSizePercent(
@@ -3462,6 +3500,652 @@ currentsToggle?.addEventListener(
 );
 
 
+// WEATHER-1.5B · ECMWF IFS 10 m wind visualization.
+function createWindArrowImage() {
+  const size = 96;
+  const canvas =
+    document.createElement(
+      'canvas',
+    );
+
+  canvas.width = size;
+  canvas.height = size;
+
+  const context =
+    canvas.getContext('2d');
+
+  context.clearRect(
+    0,
+    0,
+    size,
+    size,
+  );
+
+  // Arrow artwork points to true north before MapLibre rotation.
+  context.beginPath();
+  context.moveTo(48, 7);
+  context.lineTo(79, 37);
+  context.lineTo(61, 37);
+  context.lineTo(61, 88);
+  context.lineTo(35, 88);
+  context.lineTo(35, 37);
+  context.lineTo(17, 37);
+  context.closePath();
+
+  context.save();
+  context.shadowColor =
+    'rgba(56, 189, 248, 0.72)';
+  context.shadowBlur = 10;
+  context.fillStyle = '#38bdf8';
+  context.fill();
+  context.restore();
+
+  context.strokeStyle =
+    'rgba(8, 20, 27, 0.98)';
+  context.lineWidth = 9;
+  context.lineJoin = 'round';
+  context.stroke();
+
+  context.fillStyle = '#38bdf8';
+  context.fill();
+
+  context.strokeStyle = '#d9f7ff';
+  context.lineWidth = 2.5;
+  context.stroke();
+
+  return context.getImageData(
+    0,
+    0,
+    size,
+    size,
+  );
+}
+
+
+function windLayerVisible() {
+  return Boolean(
+    windToggle?.checked,
+  );
+}
+
+
+function renderWindArrowSizeControl() {
+  if (windArrowSizeSlider) {
+    windArrowSizeSlider.value =
+      String(
+        windArrowSizePercent,
+      );
+  }
+
+  if (windArrowSizeValue) {
+    windArrowSizeValue.textContent =
+      `${windArrowSizePercent}%`;
+  }
+}
+
+
+function applyWindArrowSize() {
+  renderWindArrowSizeControl();
+
+  if (
+    !map.getLayer(
+      'weather-wind-arrows',
+    )
+  ) {
+    return;
+  }
+
+  map.setLayoutProperty(
+    'weather-wind-arrows',
+    'icon-size',
+    windArrowSizeExpression(
+      windArrowSizePercent,
+    ),
+  );
+}
+
+
+function setWindLayerVisibility(
+  visible,
+) {
+  const visibility =
+    visible
+      ? 'visible'
+      : 'none';
+
+  if (
+    map.getLayer(
+      'weather-wind-arrows',
+    )
+  ) {
+    map.setLayoutProperty(
+      'weather-wind-arrows',
+      'visibility',
+      visibility,
+    );
+  }
+
+  if (
+    !visible
+    && windPopup
+  ) {
+    windPopup.remove();
+    windPopup = null;
+  }
+}
+
+
+function renderWindStatus() {
+  if (!windNote) return;
+
+  windNote.classList.toggle(
+    'weather-wind-note--loading',
+    windLoading,
+  );
+  windNote.classList.toggle(
+    'weather-wind-note--error',
+    Boolean(
+      windErrorMessage,
+    ),
+  );
+
+  if (!windLayerVisible()) {
+    windNote.textContent = t(
+      currentLanguage,
+      'weather.windOff',
+    );
+    return;
+  }
+
+  if (windLoading) {
+    windNote.textContent = t(
+      currentLanguage,
+      'weather.windLoading',
+    );
+    return;
+  }
+
+  if (windErrorMessage) {
+    windNote.textContent = t(
+      currentLanguage,
+      'weather.windError',
+      {
+        message:
+          windErrorMessage,
+      },
+    );
+    return;
+  }
+
+  if (windPayload) {
+    windNote.textContent = t(
+      currentLanguage,
+      'weather.windReady',
+      {
+        time:
+          formatCurrentValidTime(
+            windPayload.valid_time,
+            localeForLanguage(
+              currentLanguage,
+            ),
+          ),
+        count:
+          windPayload.vector_count,
+        run:
+          formatCurrentValidTime(
+            windPayload
+              .forecast_reference_time,
+            localeForLanguage(
+              currentLanguage,
+            ),
+          ),
+      },
+    );
+    return;
+  }
+
+  windNote.textContent = t(
+    currentLanguage,
+    'weather.windOff',
+  );
+}
+
+
+function makeWindPopupContent(
+  properties,
+) {
+  const root =
+    document.createElement(
+      'div',
+    );
+
+  root.className =
+    'ocean-current-popup wind-popup';
+
+  const title =
+    document.createElement(
+      'div',
+    );
+
+  title.className =
+    'ocean-current-popup__title';
+
+  title.textContent = t(
+    currentLanguage,
+    'weather.popupTitle',
+  );
+
+  root.append(title);
+
+  const fromDegrees =
+    Number(
+      properties
+        .direction_from_deg,
+    );
+  const toDegrees =
+    Number(
+      properties
+        .direction_to_deg,
+    );
+
+  const sourceText =
+    [
+      'ECMWF IFS',
+      ...(windPayload?.sources ?? []),
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+  const rows = [
+    [
+      t(
+        currentLanguage,
+        'weather.speed',
+      ),
+      formatWindSpeed(
+        properties.speed,
+      ),
+    ],
+    [
+      t(
+        currentLanguage,
+        'weather.from',
+      ),
+      (
+        Number.isFinite(
+          fromDegrees,
+        )
+          ? (
+            `${cardinalDirection(
+              fromDegrees,
+              currentLanguage,
+            )} · `
+            + `${fromDegrees.toFixed(0)}°`
+          )
+          : '—'
+      ),
+    ],
+    [
+      t(
+        currentLanguage,
+        'weather.to',
+      ),
+      (
+        Number.isFinite(
+          toDegrees,
+        )
+          ? (
+            `${cardinalDirection(
+              toDegrees,
+              currentLanguage,
+            )} · `
+            + `${toDegrees.toFixed(0)}°`
+          )
+          : '—'
+      ),
+    ],
+    [
+      t(
+        currentLanguage,
+        'weather.components',
+      ),
+      (
+        `u ${Number(
+          properties.u,
+        ).toFixed(2)} · `
+        + `v ${Number(
+          properties.v,
+        ).toFixed(2)} m/s`
+      ),
+    ],
+    [
+      t(
+        currentLanguage,
+        'weather.height',
+      ),
+      (
+        windPayload?.height_m
+        == null
+          ? '—'
+          : (
+            `${Number(
+              windPayload.height_m,
+            ).toFixed(0)} m`
+          )
+      ),
+    ],
+    [
+      t(
+        currentLanguage,
+        'weather.modelTime',
+      ),
+      formatCurrentValidTime(
+        windPayload?.valid_time,
+        localeForLanguage(
+          currentLanguage,
+        ),
+      ),
+    ],
+    [
+      t(
+        currentLanguage,
+        'weather.forecastRun',
+      ),
+      formatCurrentValidTime(
+        windPayload
+          ?.forecast_reference_time,
+        localeForLanguage(
+          currentLanguage,
+        ),
+      ),
+    ],
+    [
+      t(
+        currentLanguage,
+        'weather.source',
+      ),
+      sourceText || 'ECMWF IFS',
+    ],
+  ];
+
+  for (
+    const [
+      keyText,
+      valueText,
+    ]
+    of rows
+  ) {
+    const row =
+      document.createElement(
+        'div',
+      );
+
+    row.className =
+      'ocean-current-popup__row';
+
+    const key =
+      document.createElement(
+        'div',
+      );
+
+    key.className =
+      'ocean-current-popup__key';
+    key.textContent = keyText;
+
+    const value =
+      document.createElement(
+        'div',
+      );
+
+    value.className =
+      'ocean-current-popup__value';
+    value.textContent =
+      valueText;
+
+    row.append(
+      key,
+      value,
+    );
+
+    root.append(row);
+  }
+
+  return root;
+}
+
+
+function installWindLayer() {
+  if (
+    !map.hasImage(
+      'weather-wind-arrow',
+    )
+  ) {
+    map.addImage(
+      'weather-wind-arrow',
+      createWindArrowImage(),
+      {
+        pixelRatio: 2,
+      },
+    );
+  }
+
+  map.addSource(
+    'weather-wind',
+    {
+      type: 'geojson',
+      data:
+        emptyFeatureCollection(),
+    },
+  );
+
+  map.addLayer({
+    id: 'weather-wind-arrows',
+    type: 'symbol',
+    source: 'weather-wind',
+    layout: {
+      visibility: 'none',
+      'icon-image':
+        'weather-wind-arrow',
+      'icon-size':
+        windArrowSizeExpression(
+          windArrowSizePercent,
+        ),
+      // IMPORTANT:
+      // backend direction_to_deg is the physical direction
+      // the air travels TO. Map arrows must use TO, not
+      // meteorological FROM.
+      'icon-rotate': [
+        'get',
+        'direction_to_deg',
+      ],
+      'icon-rotation-alignment':
+        'map',
+      'icon-pitch-alignment':
+        'map',
+      'icon-allow-overlap':
+        true,
+      'icon-ignore-placement':
+        true,
+      'icon-padding': 0,
+    },
+    paint: {
+      'icon-opacity': [
+        'interpolate',
+        ['linear'],
+        ['get', 'speed'],
+        0, 0.58,
+        2, 0.72,
+        5, 0.88,
+        10, 0.98,
+        15, 1.0,
+      ],
+    },
+  });
+
+  applyWindArrowSize();
+
+  map.on(
+    'mouseenter',
+    'weather-wind-arrows',
+    () => {
+      map.getCanvas()
+        .style.cursor =
+          'pointer';
+    },
+  );
+
+  map.on(
+    'mouseleave',
+    'weather-wind-arrows',
+    () => {
+      map.getCanvas()
+        .style.cursor = '';
+    },
+  );
+
+  map.on(
+    'click',
+    'weather-wind-arrows',
+    (event) => {
+      if (
+        driftSelectionActive
+        || driftSelectionJustConsumed
+      ) return;
+
+      const feature =
+        event.features?.[0];
+
+      if (!feature) return;
+
+      if (windPopup) {
+        windPopup.remove();
+      }
+
+      windPopup =
+        new maplibregl.Popup({
+          closeButton: true,
+          closeOnClick: true,
+          offset: 10,
+        })
+          .setLngLat(
+            feature.geometry
+              .coordinates,
+          )
+          .setDOMContent(
+            makeWindPopupContent(
+              feature.properties
+              ?? {},
+            ),
+          )
+          .addTo(map);
+    },
+  );
+}
+
+
+async function refreshWind() {
+  if (
+    !windLayerVisible()
+    || windLoading
+  ) {
+    return;
+  }
+
+  windLoading = true;
+  windErrorMessage = '';
+  renderWindStatus();
+
+  try {
+    const payload =
+      await fetchWindField({
+        stride:
+          WIND_STRIDE,
+      });
+
+    windPayload = payload;
+
+    const source =
+      map.getSource(
+        'weather-wind',
+      );
+
+    if (source) {
+      source.setData(
+        windToFeatureCollection(
+          payload,
+        ),
+      );
+    }
+
+    setWindLayerVisibility(
+      true,
+    );
+  } catch (error) {
+    console.error(
+      '[Black Sea Eco Monitor / wind]',
+      error,
+    );
+
+    windErrorMessage =
+      error.message;
+
+    if (!windPayload) {
+      setWindLayerVisibility(
+        false,
+      );
+    }
+  } finally {
+    windLoading = false;
+    renderWindStatus();
+  }
+}
+
+
+windArrowSizeSlider
+  ?.addEventListener(
+    'input',
+    () => {
+      windArrowSizePercent =
+        normalizeWindArrowSizePercent(
+          windArrowSizeSlider.value,
+        );
+
+      window.localStorage
+        .setItem(
+          WIND_ARROW_SIZE_STORAGE_KEY,
+          String(
+            windArrowSizePercent,
+          ),
+        );
+
+      applyWindArrowSize();
+    },
+  );
+
+
+renderWindArrowSizeControl();
+
+
+windToggle?.addEventListener(
+  'change',
+  () => {
+    if (windLayerVisible()) {
+      setWindLayerVisibility(
+        true,
+      );
+
+      void refreshWind();
+    } else {
+      setWindLayerVisibility(
+        false,
+      );
+
+      renderWindStatus();
+    }
+  },
+);
+
+
 document.addEventListener(
   'visibilitychange',
   () => {
@@ -3968,6 +4652,7 @@ function applyLanguage(language) {
   refreshSelectedPanel();
   renderCurrentsStatus();
   renderCurrentDisplayControls();
+  renderWindStatus();
   renderLongTaskUX();
   renderDriftControls();
   renderSatelliteStatus();
@@ -3975,6 +4660,11 @@ function applyLanguage(language) {
   if (currentsPopup) {
     currentsPopup.remove();
     currentsPopup = null;
+  }
+
+  if (windPopup) {
+    windPopup.remove();
+    windPopup = null;
   }
 }
 
@@ -4148,10 +4838,12 @@ map.on('load', () => {
   installSatelliteLayer();
   installEventLayer();
   installCurrentLayer();
+  installWindLayer();
   installDriftLayer();
   installImpactLayer();
   renderCurrentsStatus();
   renderCurrentDisplayControls();
+  renderWindStatus();
   renderDriftControls();
   renderSatelliteStatus();
 
@@ -4169,5 +4861,14 @@ map.on('load', () => {
       }
     },
     CURRENTS_REFRESH_INTERVAL_MS,
+  );
+
+  window.setInterval(
+    () => {
+      if (windLayerVisible()) {
+        void refreshWind();
+      }
+    },
+    WIND_REFRESH_INTERVAL_MS,
   );
 });

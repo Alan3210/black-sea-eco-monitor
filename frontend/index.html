@@ -357,6 +357,66 @@
             </div>
           </div>
 
+          <div class="filter-section weather-wind-section">
+            <div class="filter-section__title" data-i18n="weather.layers">
+              АТМОСФЕРА
+            </div>
+
+            <label class="filter-check filter-check--layer">
+              <input
+                id="wind-layer-toggle"
+                type="checkbox"
+              />
+              <span class="wind-layer-symbol" aria-hidden="true">↗</span>
+              <span data-i18n="weather.wind10m">
+                Ветер · 10 м · ECMWF IFS
+              </span>
+            </label>
+
+            <div
+              id="wind-layer-note"
+              class="filter-note weather-wind-note"
+              aria-live="polite"
+              data-i18n="weather.windOff"
+            >
+              ECMWF IFS · поле ветра 10 м
+            </div>
+
+            <div class="current-size-control wind-size-control">
+              <div class="current-size-control__header">
+                <span data-i18n="weather.arrowSize">
+                  Размер стрелок
+                </span>
+                <output
+                  id="wind-arrow-size-value"
+                  class="current-size-control__value"
+                  for="wind-arrow-size"
+                >
+                  100%
+                </output>
+              </div>
+
+              <input
+                id="wind-arrow-size"
+                class="current-size-control__slider"
+                type="range"
+                min="60"
+                max="200"
+                step="10"
+                value="100"
+                data-i18n-aria-label="weather.arrowSizeAria"
+                aria-label="Размер стрелок ветра"
+              />
+            </div>
+
+            <div
+              class="filter-note weather-wind-semantics"
+              data-i18n="weather.directionNote"
+            >
+              Стрелки показывают, куда движется воздух. Метеорологическое направление FROM показано по клику.
+            </div>
+          </div>
+
             <div class="drift-control">
               <div class="drift-control__title" data-i18n="drift.title">
                 ПРОГНОЗ ДРЕЙФА
