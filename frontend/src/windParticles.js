@@ -259,6 +259,140 @@ function fieldKey(
 }
 
 
+function coordinateKey(
+  longitude,
+  latitude,
+) {
+  return `${longitude}|${latitude}`;
+}
+
+
+function uniqueSorted(values) {
+  return [
+    ...new Set(values),
+  ].sort(
+    (a, b) => a - b,
+  );
+}
+
+
+function bracketGridAxis(
+  values,
+  coordinate,
+) {
+  if (
+    !Array.isArray(values)
+    || values.length < 2
+    || !Number.isFinite(coordinate)
+  ) {
+    return null;
+  }
+
+  const first =
+    values[0];
+
+  const last =
+    values[
+      values.length - 1
+    ];
+
+  const epsilon =
+    Math.max(
+      1e-9,
+      Math.abs(
+        last - first,
+      ) * 1e-10,
+    );
+
+  if (
+    coordinate
+      < first - epsilon
+    || coordinate
+      > last + epsilon
+  ) {
+    return null;
+  }
+
+  if (
+    coordinate <= first
+  ) {
+    return {
+      lowerIndex: 0,
+      upperIndex: 1,
+      fraction: 0,
+    };
+  }
+
+  if (
+    coordinate >= last
+  ) {
+    return {
+      lowerIndex:
+        values.length - 2,
+      upperIndex:
+        values.length - 1,
+      fraction: 1,
+    };
+  }
+
+  let low = 0;
+  let high =
+    values.length - 1;
+
+  while (
+    high - low > 1
+  ) {
+    const middle =
+      Math.floor(
+        (
+          low + high
+        ) / 2,
+      );
+
+    if (
+      values[middle]
+      <= coordinate
+    ) {
+      low = middle;
+    } else {
+      high = middle;
+    }
+  }
+
+  const lower =
+    values[low];
+
+  const upper =
+    values[high];
+
+  const span =
+    upper - lower;
+
+  if (
+    span <= 0
+  ) {
+    return null;
+  }
+
+  return {
+    lowerIndex: low,
+    upperIndex: high,
+    fraction:
+      Math.max(
+        0,
+        Math.min(
+          1,
+          (
+            coordinate
+            - lower
+          )
+          / span,
+        ),
+      ),
+  };
+}
+
+
 export function buildWindVectorField(
   vectors,
 ) {
@@ -308,6 +442,10 @@ export function buildWindVectorField(
     return {
       vectors: [],
       buckets: new Map(),
+      grid: new Map(),
+      longitudeAxis: [],
+      latitudeAxis: [],
+      isRegularGrid: false,
       minLongitude: 0,
       maxLongitude: 0,
       minLatitude: 0,
@@ -324,9 +462,23 @@ export function buildWindVectorField(
     (vector) => vector.latitude,
   );
 
+  const longitudeAxis =
+    uniqueSorted(
+      longitudes,
+    );
+
+  const latitudeAxis =
+    uniqueSorted(
+      latitudes,
+    );
+
   const field = {
     vectors: usable,
     buckets: new Map(),
+    grid: new Map(),
+    longitudeAxis,
+    latitudeAxis,
+    isRegularGrid: false,
     minLongitude: Math.min(
       ...longitudes,
     ),
@@ -365,7 +517,24 @@ export function buildWindVectorField(
     field.buckets
       .get(key)
       .push(vector);
+
+    field.grid.set(
+      coordinateKey(
+        vector.longitude,
+        vector.latitude,
+      ),
+      vector,
+    );
   }
+
+  field.isRegularGrid =
+    longitudeAxis.length >= 2
+    && latitudeAxis.length >= 2
+    && field.grid.size
+      === (
+        longitudeAxis.length
+        * latitudeAxis.length
+      );
 
   return field;
 }
@@ -540,6 +709,306 @@ export function windParticleSeedBounds(
 }
 
 
+function sampleWindVectorInverseDistance(
+  field,
+  longitude,
+  latitude,
+) {
+  const centerX = Math.floor(
+    (
+      longitude
+      - field.minLongitude
+    )
+    / field.cellSize,
+  );
+
+  const centerY = Math.floor(
+    (
+      latitude
+      - field.minLatitude
+    )
+    / field.cellSize,
+  );
+
+  const candidates = [];
+
+  for (
+    let offsetX = -1;
+    offsetX <= 1;
+    offsetX += 1
+  ) {
+    for (
+      let offsetY = -1;
+      offsetY <= 1;
+      offsetY += 1
+    ) {
+      const key =
+        `${centerX + offsetX}:`
+        + `${centerY + offsetY}`;
+
+      const bucket =
+        field.buckets.get(key)
+        ?? [];
+
+      for (
+        const candidate
+        of bucket
+      ) {
+        const dx =
+          candidate.longitude
+          - longitude;
+
+        const dy =
+          candidate.latitude
+          - latitude;
+
+        const distanceSquared =
+          dx * dx
+          + dy * dy;
+
+        if (
+          Math.sqrt(
+            distanceSquared,
+          )
+          <= field.maxSampleDistance
+        ) {
+          candidates.push({
+            candidate,
+            distanceSquared,
+          });
+        }
+      }
+    }
+  }
+
+  if (!candidates.length) {
+    return null;
+  }
+
+  candidates.sort(
+    (a, b) =>
+      a.distanceSquared
+      - b.distanceSquared,
+  );
+
+  const nearest =
+    candidates.slice(
+      0,
+      8,
+    );
+
+  if (
+    nearest[0]
+      .distanceSquared
+      <= 1e-14
+  ) {
+    return nearest[0]
+      .candidate;
+  }
+
+  let totalWeight = 0;
+  let u = 0;
+  let v = 0;
+
+  for (
+    const item
+    of nearest
+  ) {
+    const weight =
+      1
+      / (
+        item.distanceSquared
+        + 1e-12
+      );
+
+    totalWeight +=
+      weight;
+
+    u +=
+      item.candidate.u
+      * weight;
+
+    v +=
+      item.candidate.v
+      * weight;
+  }
+
+  if (
+    totalWeight <= 0
+  ) {
+    return null;
+  }
+
+  u /= totalWeight;
+  v /= totalWeight;
+
+  return {
+    longitude,
+    latitude,
+    u,
+    v,
+    speed:
+      Math.hypot(
+        u,
+        v,
+      ),
+  };
+}
+
+
+function sampleRegularWindGrid(
+  field,
+  longitude,
+  latitude,
+) {
+  const longitudeBracket =
+    bracketGridAxis(
+      field.longitudeAxis,
+      longitude,
+    );
+
+  const latitudeBracket =
+    bracketGridAxis(
+      field.latitudeAxis,
+      latitude,
+    );
+
+  if (
+    !longitudeBracket
+    || !latitudeBracket
+  ) {
+    return null;
+  }
+
+  const lon0 =
+    field.longitudeAxis[
+      longitudeBracket
+        .lowerIndex
+    ];
+
+  const lon1 =
+    field.longitudeAxis[
+      longitudeBracket
+        .upperIndex
+    ];
+
+  const lat0 =
+    field.latitudeAxis[
+      latitudeBracket
+        .lowerIndex
+    ];
+
+  const lat1 =
+    field.latitudeAxis[
+      latitudeBracket
+        .upperIndex
+    ];
+
+  const q00 =
+    field.grid.get(
+      coordinateKey(
+        lon0,
+        lat0,
+      ),
+    );
+
+  const q10 =
+    field.grid.get(
+      coordinateKey(
+        lon1,
+        lat0,
+      ),
+    );
+
+  const q01 =
+    field.grid.get(
+      coordinateKey(
+        lon0,
+        lat1,
+      ),
+    );
+
+  const q11 =
+    field.grid.get(
+      coordinateKey(
+        lon1,
+        lat1,
+      ),
+    );
+
+  if (
+    !q00
+    || !q10
+    || !q01
+    || !q11
+  ) {
+    return null;
+  }
+
+  const tx =
+    longitudeBracket
+      .fraction;
+
+  const ty =
+    latitudeBracket
+      .fraction;
+
+  const lowerU =
+    q00.u
+    + (
+      q10.u
+      - q00.u
+    ) * tx;
+
+  const upperU =
+    q01.u
+    + (
+      q11.u
+      - q01.u
+    ) * tx;
+
+  const lowerV =
+    q00.v
+    + (
+      q10.v
+      - q00.v
+    ) * tx;
+
+  const upperV =
+    q01.v
+    + (
+      q11.v
+      - q01.v
+    ) * tx;
+
+  const u =
+    lowerU
+    + (
+      upperU
+      - lowerU
+    ) * ty;
+
+  const v =
+    lowerV
+    + (
+      upperV
+      - lowerV
+    ) * ty;
+
+  return {
+    longitude,
+    latitude,
+    u,
+    v,
+    speed:
+      Math.hypot(
+        u,
+        v,
+      ),
+  };
+}
+
+
 export function sampleWindVector(
   field,
   longitude,
@@ -570,86 +1039,35 @@ export function sampleWindVector(
     return null;
   }
 
-  const centerX = Math.floor(
-    (
-      longitude
-      - field.minLongitude
-    )
-    / field.cellSize,
-  );
-
-  const centerY = Math.floor(
-    (
-      latitude
-      - field.minLatitude
-    )
-    / field.cellSize,
-  );
-
-  let best = null;
-  let bestDistanceSquared =
-    Infinity;
-
-  for (
-    let offsetX = -1;
-    offsetX <= 1;
-    offsetX += 1
+  // The ECMWF endpoint exposes a regular latitude/longitude grid.
+  // Particle trajectories must not use nearest-neighbour sampling:
+  // that makes u/v piecewise constant inside every grid cell and
+  // exposes the grid as horizontal/vertical seams in accumulated
+  // trails. Bilinear interpolation keeps u and v continuous across
+  // cell boundaries.
+  if (
+    field.isRegularGrid
   ) {
-    for (
-      let offsetY = -1;
-      offsetY <= 1;
-      offsetY += 1
-    ) {
-      const key =
-        `${centerX + offsetX}:`
-        + `${centerY + offsetY}`;
+    const interpolated =
+      sampleRegularWindGrid(
+        field,
+        longitude,
+        latitude,
+      );
 
-      const candidates =
-        field.buckets.get(key)
-        ?? [];
-
-      for (
-        const candidate
-        of candidates
-      ) {
-        const dx =
-          candidate.longitude
-          - longitude;
-
-        const dy =
-          candidate.latitude
-          - latitude;
-
-        const distanceSquared =
-          dx * dx
-          + dy * dy;
-
-        if (
-          distanceSquared
-          < bestDistanceSquared
-        ) {
-          best = candidate;
-          bestDistanceSquared =
-            distanceSquared;
-        }
-      }
+    if (interpolated) {
+      return interpolated;
     }
   }
 
-  if (!best) {
-    return null;
-  }
-
-  if (
-    Math.sqrt(
-      bestDistanceSquared,
-    )
-    > field.maxSampleDistance
-  ) {
-    return null;
-  }
-
-  return best;
+  // Defensive fallback for incomplete or degenerate fields. IDW is
+  // still spatially smooth and avoids reintroducing the old hard
+  // nearest-neighbour cell transitions.
+  return sampleWindVectorInverseDistance(
+    field,
+    longitude,
+    latitude,
+  );
 }
 
 

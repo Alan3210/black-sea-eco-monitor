@@ -132,7 +132,7 @@ test(
 
 
 test(
-  'builds and samples wind vector field',
+  'builds and samples a regular wind vector grid',
   () => {
     const field =
       buildWindVectorField([
@@ -141,36 +141,71 @@ test(
           latitude: 44.0,
           u: 2,
           v: -3,
-          speed: 3.6,
+          speed: Math.hypot(
+            2,
+            -3,
+          ),
         },
         {
           longitude: 37.5,
           latitude: 44.0,
           u: 4,
           v: -1,
-          speed: 4.1,
+          speed: Math.hypot(
+            4,
+            -1,
+          ),
+        },
+        {
+          longitude: 37.0,
+          latitude: 44.5,
+          u: 3,
+          v: -2,
+          speed: Math.hypot(
+            3,
+            -2,
+          ),
+        },
+        {
+          longitude: 37.5,
+          latitude: 44.5,
+          u: 5,
+          v: 0,
+          speed: 5,
         },
       ]);
 
     assert.equal(
       field.vectors.length,
-      2,
+      4,
+    );
+
+    assert.equal(
+      field.isRegularGrid,
+      true,
     );
 
     const sample =
       sampleWindVector(
         field,
-        37.03,
-        44.02,
+        37.25,
+        44.25,
       );
 
     assert.ok(
       sample,
     );
 
-    assert.equal(
-      sample.u,
-      2,
+    assert.ok(
+      Math.abs(
+        sample.u - 3.5,
+      ) < 1e-9,
+    );
+
+    assert.ok(
+      Math.abs(
+        sample.v + 1.5,
+      ) < 1e-9,
     );
   },
 );
@@ -455,6 +490,223 @@ test(
     assert.match(
       small.haloColor,
       /^rgba\(/,
+    );
+  },
+);
+
+
+test(
+  'bilinearly interpolates u and v inside a wind grid cell',
+  () => {
+    const field =
+      buildWindVectorField([
+        {
+          longitude: 0,
+          latitude: 0,
+          u: 0,
+          v: 0,
+          speed: 0,
+        },
+        {
+          longitude: 1,
+          latitude: 0,
+          u: 10,
+          v: 0,
+          speed: 10,
+        },
+        {
+          longitude: 0,
+          latitude: 1,
+          u: 0,
+          v: 20,
+          speed: 20,
+        },
+        {
+          longitude: 1,
+          latitude: 1,
+          u: 10,
+          v: 20,
+          speed: Math.hypot(
+            10,
+            20,
+          ),
+        },
+      ]);
+
+    const sample =
+      sampleWindVector(
+        field,
+        0.25,
+        0.75,
+      );
+
+    assert.ok(
+      sample,
+    );
+
+    assert.ok(
+      Math.abs(
+        sample.u - 2.5,
+      ) < 1e-9,
+    );
+
+    assert.ok(
+      Math.abs(
+        sample.v - 15,
+      ) < 1e-9,
+    );
+
+    assert.ok(
+      Math.abs(
+        sample.speed
+        - Math.hypot(
+          2.5,
+          15,
+        ),
+      ) < 1e-9,
+    );
+  },
+);
+
+
+test(
+  'keeps particle wind sampling continuous across grid-cell seams',
+  () => {
+    const vectors = [];
+
+    for (
+      const latitude
+      of [
+        44,
+        44.5,
+      ]
+    ) {
+      for (
+        const longitude
+        of [
+          37,
+          37.5,
+          38,
+        ]
+      ) {
+        const u =
+          (
+            longitude - 37
+          ) * 10;
+
+        const v =
+          (
+            latitude - 44
+          ) * 6;
+
+        vectors.push({
+          longitude,
+          latitude,
+          u,
+          v,
+          speed:
+            Math.hypot(
+              u,
+              v,
+            ),
+        });
+      }
+    }
+
+    const field =
+      buildWindVectorField(
+        vectors,
+      );
+
+    const left =
+      sampleWindVector(
+        field,
+        37.5 - 1e-5,
+        44.25,
+      );
+
+    const right =
+      sampleWindVector(
+        field,
+        37.5 + 1e-5,
+        44.25,
+      );
+
+    assert.ok(
+      left,
+    );
+
+    assert.ok(
+      right,
+    );
+
+    assert.ok(
+      Math.abs(
+        left.u - right.u,
+      ) < 0.001,
+    );
+
+    assert.ok(
+      Math.abs(
+        left.v - right.v,
+      ) < 0.001,
+    );
+  },
+);
+
+
+test(
+  'uses smooth inverse-distance fallback for an incomplete grid',
+  () => {
+    const field =
+      buildWindVectorField([
+        {
+          longitude: 37,
+          latitude: 44,
+          u: 0,
+          v: 0,
+          speed: 0,
+        },
+        {
+          longitude: 37.5,
+          latitude: 44,
+          u: 10,
+          v: 0,
+          speed: 10,
+        },
+        {
+          longitude: 37,
+          latitude: 44.5,
+          u: 0,
+          v: 10,
+          speed: 10,
+        },
+      ]);
+
+    assert.equal(
+      field.isRegularGrid,
+      false,
+    );
+
+    const sample =
+      sampleWindVector(
+        field,
+        37.2,
+        44.2,
+      );
+
+    assert.ok(
+      sample,
+    );
+
+    assert.ok(
+      sample.u > 0
+      && sample.u < 10,
+    );
+
+    assert.ok(
+      sample.v > 0
+      && sample.v < 10,
     );
   },
 );
