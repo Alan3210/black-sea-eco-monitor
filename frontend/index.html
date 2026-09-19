@@ -8,19 +8,112 @@
       name="description"
       content="Карта экологических происшествий в Черноморском регионе"
     />
-    <title>Экомонитор Чёрного моря</title>
+    <title>ЭКОМОНИТОР</title>
   </head>
   <body>
     <div id="app">
       <header class="topbar">
-        <div>
-          <div class="eyebrow" data-i18n="site.eyebrow">
-            ЭКОЛОГИЧЕСКАЯ АНАЛИТИКА
-          </div>
-          <h1 data-i18n="site.title">Экомонитор Чёрного моря</h1>
+        <div class="topbar-brand">
+          <h1 data-i18n="site.title">ЭКОМОНИТОР</h1>
         </div>
 
         <div class="topbar-actions">
+          <section
+            id="combined-fields-hud"
+            class="combined-fields-hud combined-fields-hud--header"
+            aria-live="polite"
+            hidden
+          >
+            <div class="combined-fields-hud__field">
+              <span
+                class="combined-fields-hud__swatch combined-fields-hud__swatch--current"
+                aria-hidden="true"
+              ></span>
+
+              <div class="combined-fields-hud__field-copy">
+                <div class="combined-fields-hud__field-title">
+                  <span data-i18n="combined.currents">Течения</span>
+                  <span
+                    id="combined-current-mode"
+                    class="combined-fields-hud__mode"
+                  >
+                    —
+                  </span>
+                </div>
+
+                <div class="combined-fields-hud__meta">
+                  <span>Copernicus Marine</span>
+                  <span aria-hidden="true">·</span>
+                  <span id="combined-current-time">—</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="combined-fields-hud__field">
+              <span
+                class="combined-fields-hud__swatch combined-fields-hud__swatch--wind"
+                aria-hidden="true"
+              ></span>
+
+              <div class="combined-fields-hud__field-copy">
+                <div class="combined-fields-hud__field-title">
+                  <span data-i18n="combined.wind">Ветер</span>
+                  <span
+                    id="combined-wind-mode"
+                    class="combined-fields-hud__mode"
+                  >
+                    —
+                  </span>
+                </div>
+
+                <div
+                  id="combined-wind-speed"
+                  class="combined-fields-hud__speed"
+                >
+                  ср. — м/с
+                </div>
+
+                <div class="combined-fields-hud__meta">
+                  <span>ECMWF IFS</span>
+                  <span aria-hidden="true">·</span>
+                  <span id="combined-wind-time">—</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="combined-fields-hud__summary">
+              <div class="combined-fields-hud__summary-head">
+                <span
+                  class="combined-fields-hud__kicker"
+                  data-i18n="combined.title"
+                >
+                  СОВМЕСТНЫЙ РЕЖИМ
+                </span>
+
+                <span
+                  id="combined-fields-state"
+                  class="combined-fields-hud__state"
+                >
+                  —
+                </span>
+              </div>
+
+              <span
+                id="combined-fields-time-delta"
+                class="combined-fields-hud__delta"
+              >
+                Δt —
+              </span>
+
+              <span
+                class="combined-fields-hud__semantics"
+                data-i18n="combined.independent"
+              >
+                Поля независимы · не суммарный вектор
+              </span>
+            </div>
+          </section>
+
           <div
             id="language-switch"
             class="language-switch"
@@ -48,12 +141,30 @@
             </button>
           </div>
 
-          <div class="monitor-status" aria-live="polite">
-            <span id="connection-dot" class="status-dot status-dot--loading"></span>
-            <div>
-              <div id="connection-label">Подключение…</div>
-              <div id="update-label" class="status-subline">Ожидание API</div>
-            </div>
+          <div
+            class="monitor-status"
+            aria-live="polite"
+            aria-label="Статус соединения"
+          >
+            <span
+              id="connection-dot"
+              class="status-dot status-dot--loading"
+              aria-hidden="true"
+            ></span>
+
+            <span
+              id="connection-label"
+              class="monitor-status__visually-hidden"
+            >
+              Подключение…
+            </span>
+
+            <span
+              id="update-label"
+              class="monitor-status__visually-hidden"
+            >
+              Ожидание API
+            </span>
           </div>
         </div>
       </header>
@@ -64,6 +175,7 @@
           aria-label="Карта экологических происшествий Черноморского региона"
           data-i18n-aria-label="map.aria"
         ></div>
+
 
         <aside
           class="filter-panel"
@@ -369,7 +481,7 @@
               />
               <span class="wind-layer-symbol" aria-hidden="true">↗</span>
               <span data-i18n="weather.wind10m">
-                Ветер · 10 м · ECMWF IFS
+                Ветер · ECMWF IFS
               </span>
             </label>
 
@@ -379,7 +491,7 @@
               aria-live="polite"
               data-i18n="weather.windOff"
             >
-              ECMWF IFS · поле ветра 10 м
+              ECMWF IFS · поле ветра
             </div>
 
             <div class="current-size-control wind-size-control">

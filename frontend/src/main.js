@@ -68,6 +68,10 @@ import {
 } from './windParticles.js';
 
 import {
+  combinedFieldsViewModel,
+} from './combinedFields.js';
+
+import {
   DEFAULT_DRIFT_FORCING_MODE,
   DEFAULT_DRIFT_HORIZON,
   DEFAULT_DRIFT_PARTICLES,
@@ -248,6 +252,38 @@ const windParticleSizeSlider = document.getElementById(
 
 const windParticleSizeValue = document.getElementById(
   'wind-particle-size-value',
+);
+
+const combinedFieldsHud = document.getElementById(
+  'combined-fields-hud',
+);
+
+const combinedFieldsState = document.getElementById(
+  'combined-fields-state',
+);
+
+const combinedCurrentMode = document.getElementById(
+  'combined-current-mode',
+);
+
+const combinedCurrentTime = document.getElementById(
+  'combined-current-time',
+);
+
+const combinedWindMode = document.getElementById(
+  'combined-wind-mode',
+);
+
+const combinedWindTime = document.getElementById(
+  'combined-wind-time',
+);
+
+const combinedWindSpeed = document.getElementById(
+  'combined-wind-speed',
+);
+
+const combinedFieldsTimeDelta = document.getElementById(
+  'combined-fields-time-delta',
 );
 
 const currentDisplayModeInputs = [
@@ -2765,6 +2801,242 @@ function installDriftLayer() {
 }
 
 
+
+function combinedModeLabel(
+  kind,
+  mode,
+) {
+  const keys =
+    kind === 'wind'
+      ? {
+        arrows:
+          'weather.modeArrows',
+        particles:
+          'weather.modeParticles',
+        both:
+          'weather.modeBoth',
+      }
+      : {
+        arrows:
+          'ocean.modeArrows',
+        particles:
+          'ocean.modeParticles',
+        both:
+          'ocean.modeBoth',
+      };
+
+  return t(
+    currentLanguage,
+    keys[mode]
+      ?? keys.arrows,
+  );
+}
+
+
+
+function combinedWindSpeedLabel(
+  speedMs,
+) {
+  const speed =
+    Number(speedMs);
+
+  if (
+    !Number.isFinite(speed)
+    || speed < 0
+  ) {
+    return t(
+      currentLanguage,
+      'combined.windMeanSpeedUnavailable',
+    );
+  }
+
+  const formatted =
+    new Intl.NumberFormat(
+      localeForLanguage(
+        currentLanguage,
+      ),
+      {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      },
+    )
+      .format(
+        speed,
+      );
+
+  return t(
+    currentLanguage,
+    'combined.windMeanSpeed',
+    {
+      speed:
+        formatted,
+    },
+  );
+}
+
+
+function combinedTimeDeltaLabel(
+  minutes,
+) {
+  if (!Number.isFinite(minutes)) {
+    return t(
+      currentLanguage,
+      'combined.deltaUnknown',
+    );
+  }
+
+  const rounded =
+    Math.max(
+      0,
+      Math.round(minutes),
+    );
+
+  if (rounded < 60) {
+    return t(
+      currentLanguage,
+      'combined.deltaMinutes',
+      {
+        minutes: rounded,
+      },
+    );
+  }
+
+  const hours =
+    Math.floor(
+      rounded / 60,
+    );
+
+  const remainder =
+    rounded % 60;
+
+  if (!remainder) {
+    return t(
+      currentLanguage,
+      'combined.deltaHours',
+      {
+        hours,
+      },
+    );
+  }
+
+  return t(
+    currentLanguage,
+    'combined.deltaHoursMinutes',
+    {
+      hours,
+      minutes:
+        remainder,
+    },
+  );
+}
+
+
+function renderCombinedFieldsHud() {
+  if (!combinedFieldsHud) {
+    return;
+  }
+
+  const view =
+    combinedFieldsViewModel({
+      currentsEnabled:
+        currentLayerVisible(),
+      windEnabled:
+        windLayerVisible(),
+      currentsPayload,
+      windPayload,
+      currentsLoading,
+      windLoading,
+      currentsError:
+        currentsErrorMessage,
+      windError:
+        windErrorMessage,
+      currentDisplayMode,
+      windDisplayMode,
+    });
+
+  combinedFieldsHud.hidden =
+    !view.visible;
+
+  if (!view.visible) {
+    return;
+  }
+
+  combinedFieldsHud.dataset.state =
+    view.state;
+
+  if (combinedFieldsState) {
+    const stateKey =
+      view.state === 'error'
+        ? 'combined.error'
+        : (
+          view.state === 'loading'
+            ? 'combined.loading'
+            : 'combined.ready'
+        );
+
+    combinedFieldsState.textContent =
+      t(
+        currentLanguage,
+        stateKey,
+      );
+  }
+
+  if (combinedCurrentMode) {
+    combinedCurrentMode.textContent =
+      combinedModeLabel(
+        'current',
+        view.currentDisplayMode,
+      );
+  }
+
+  if (combinedWindMode) {
+    combinedWindMode.textContent =
+      combinedModeLabel(
+        'wind',
+        view.windDisplayMode,
+      );
+  }
+
+  if (combinedCurrentTime) {
+    combinedCurrentTime.textContent =
+      view.currentValidTime
+        ? formatCurrentValidTime(
+          view.currentValidTime,
+          localeForLanguage(
+            currentLanguage,
+          ),
+        )
+        : '—';
+  }
+
+  if (combinedWindTime) {
+    combinedWindTime.textContent =
+      view.windValidTime
+        ? formatCurrentValidTime(
+          view.windValidTime,
+          localeForLanguage(
+            currentLanguage,
+          ),
+        )
+        : '—';
+  }
+
+  if (combinedWindSpeed) {
+    combinedWindSpeed.textContent =
+      combinedWindSpeedLabel(
+        view.windMeanSpeedMs,
+      );
+  }
+
+  if (combinedFieldsTimeDelta) {
+    combinedFieldsTimeDelta.textContent =
+      combinedTimeDeltaLabel(
+        view.timeDeltaMinutes,
+      );
+  }
+}
+
+
 function renderCurrentArrowSizeControl() {
   if (currentsArrowSizeSlider) {
     currentsArrowSizeSlider.value = String(
@@ -2928,6 +3200,7 @@ function ensureParticleEngine() {
 
 function syncCurrentVisualization() {
   renderCurrentDisplayControls();
+  renderCombinedFieldsHud();
 
   const layerEnabled =
     currentLayerVisible();
@@ -3295,6 +3568,7 @@ function setCurrentLayerVisibility(visible) {
 
 function renderCurrentsStatus() {
   renderLongTaskUX();
+  renderCombinedFieldsHud();
 
   if (!currentsNote) return;
 
@@ -3790,6 +4064,7 @@ function ensureWindParticleEngine() {
 
 function syncWindVisualization() {
   renderWindDisplayControls();
+  renderCombinedFieldsHud();
 
   const layerEnabled =
     windLayerVisible();
@@ -3995,6 +4270,8 @@ function setWindLayerVisibility(
 
 
 function renderWindStatus() {
+  renderCombinedFieldsHud();
+
   if (!windNote) return;
 
   windNote.classList.toggle(
@@ -4175,22 +4452,6 @@ function makeWindPopupContent(
         + `v ${Number(
           properties.v,
         ).toFixed(2)} m/s`
-      ),
-    ],
-    [
-      t(
-        currentLanguage,
-        'weather.height',
-      ),
-      (
-        windPayload?.height_m
-        == null
-          ? '—'
-          : (
-            `${Number(
-              windPayload.height_m,
-            ).toFixed(0)} m`
-          )
       ),
     ],
     [
