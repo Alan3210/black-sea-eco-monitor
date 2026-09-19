@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from backend.api.impact import router as impact_router
 from backend.api.impact_registry import router as impact_registry_router
+from backend.api.weather import router as weather_router
 from backend.api.ar_scene import router as ar_scene_router
 from backend.api.ocean_drift import router as ocean_drift_router
 from backend.api.ocean_currents import router as ocean_currents_router
@@ -43,6 +44,10 @@ app.include_router(
 
 app.include_router(
     impact_registry_router
+)
+
+app.include_router(
+    weather_router
 )
 
 app.include_router(
