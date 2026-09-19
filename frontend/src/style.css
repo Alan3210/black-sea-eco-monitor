@@ -1604,3 +1604,149 @@ h1 {
   }
 }
 
+/* ---------------------------------------------------------
+   SYSTEM-4 - Event -> OpenDrift -> Impact screening
+   --------------------------------------------------------- */
+
+.model-workflow {
+  border-top-color: rgba(255, 209, 102, 0.16);
+}
+
+.workflow-content {
+  display: grid;
+  gap: 10px;
+}
+
+.workflow-status,
+.workflow-loading,
+.workflow-error,
+.workflow-disclaimer {
+  padding: 10px 11px;
+  border: 1px solid rgba(157, 220, 236, 0.10);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.025);
+  color: rgba(232, 241, 247, 0.58);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.workflow-loading {
+  border-color: rgba(255, 209, 102, 0.18);
+  color: #ffe08a;
+}
+
+.workflow-error {
+  border-color: rgba(255, 93, 93, 0.20);
+  color: #ff9595;
+}
+
+.workflow-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.workflow-button {
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 166, 0, 0.32);
+  border-radius: 8px;
+  background: rgba(255, 138, 0, 0.10);
+  color: #ffe08a;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.workflow-button--secondary {
+  border-color: rgba(115, 217, 232, 0.24);
+  background: rgba(115, 217, 232, 0.07);
+  color: #9cebf4;
+}
+
+.workflow-button:disabled {
+  opacity: 0.36;
+  cursor: not-allowed;
+}
+
+.workflow-result-title {
+  margin-top: 2px;
+  color: rgba(232, 241, 247, 0.48);
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+}
+
+.workflow-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.workflow-assessment-list {
+  display: grid;
+  gap: 7px;
+}
+
+.workflow-assessment {
+  padding: 10px;
+  border: 1px solid rgba(157, 220, 236, 0.09);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.workflow-assessment__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.workflow-assessment__name {
+  min-width: 0;
+  color: rgba(232, 241, 247, 0.90);
+  font-size: 10px;
+  font-weight: 760;
+  overflow-wrap: anywhere;
+}
+
+.workflow-assessment__badge {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 1px solid rgba(120, 220, 232, 0.18);
+  border-radius: 999px;
+  background: rgba(120, 220, 232, 0.07);
+  color: rgba(156, 235, 244, 0.82);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.workflow-assessment__badge--within {
+  border-color: rgba(255, 209, 102, 0.28);
+  background: rgba(255, 209, 102, 0.09);
+  color: #ffe08a;
+}
+
+.workflow-assessment__meta {
+  margin-top: 7px;
+  color: rgba(232, 241, 247, 0.42);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.workflow-disclaimer {
+  border-color: rgba(244, 201, 93, 0.14);
+  background: rgba(244, 201, 93, 0.045);
+  color: rgba(241, 224, 163, 0.66);
+}
+
+@media (max-width: 720px) {
+  .workflow-actions,
+  .workflow-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+

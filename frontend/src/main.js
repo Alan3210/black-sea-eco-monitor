@@ -87,6 +87,20 @@ import {
   monitorContextViewModel,
 } from './monitorContext.js';
 
+import {
+  DEFAULT_IMPACT_THRESHOLD_KM,
+  fetchDriftImpact,
+  impactAssessmentsToFeatureCollection,
+  impactSummaryViewModel,
+} from './impact.js';
+
+import {
+  eventCanSeedMarineModel,
+  satelliteCandidateSeed,
+  seedStatusKey,
+  modelScenarioShouldPersist,
+} from './modelScenario.js';
+
 const REFRESH_INTERVAL_MS = 60_000;
 const CURRENTS_REFRESH_INTERVAL_MS = 15 * 60_000;
 const CURRENTS_STRIDE = 10;
@@ -319,6 +333,19 @@ let driftSeed = null;
 let driftPayload = null;
 let driftLoading = false;
 let driftErrorMessage = '';
+let driftSeedSourceEventId = null;
+let driftForecastSourceEventId = null;
+let driftSeedSourceKind = null;
+let driftSeedSourceId = null;
+let driftForecastSourceKind = null;
+let driftForecastSourceId = null;
+
+let impactPayload = null;
+let impactLoading = false;
+let impactErrorMessage = '';
+let impactEventId = null;
+let impactRequestToken = 0;
+
 let satelliteCandidatesPayload = null;
 
 
@@ -632,6 +659,61 @@ function reconcileSelectionAfterFilters() {
   }
 }
 
+// SYSTEM4_2_PERSISTENT_MODEL_SCENARIO
+function modelScenarioActive() {
+  return modelScenarioShouldPersist({
+    seedAvailable: Boolean(driftSeed),
+    forecastAvailable: Boolean(driftPayload),
+    driftLoading,
+    impactAvailable: Boolean(impactPayload),
+    impactLoading,
+    impactError: Boolean(impactErrorMessage),
+  });
+}
+
+function renderStandaloneModelScenarioPanel() {
+  panelRenderToken += 1;
+  eventPanelContent.replaceChildren();
+
+  const workflowSection = makeElement(
+    'section',
+    'detail-section model-workflow',
+  );
+
+  workflowSection.append(
+    makeElement(
+      'div',
+      'detail-section__title',
+      t(currentLanguage, 'workflow.title'),
+    ),
+  );
+
+  const workflowContent = makeElement(
+    'div',
+    'workflow-content',
+  );
+
+  renderModelWorkflow(workflowContent, null);
+  workflowSection.append(workflowContent);
+  eventPanelContent.append(workflowSection);
+
+  eventPanel.classList.add('event-panel--open');
+  eventPanel.setAttribute('aria-hidden', 'false');
+}
+
+function closeEventPanelIfIdle() {
+  if (
+    selectedEventId
+    || selectedGroupId
+    || modelScenarioActive()
+  ) {
+    return;
+  }
+
+  eventPanel.classList.remove('event-panel--open');
+  eventPanel.setAttribute('aria-hidden', 'true');
+}
+
 function refreshSelectedPanel() {
   if (selectedEventId && selectedEventIsVisible()) {
     const event = eventsById.get(selectedEventId);
@@ -642,7 +724,6 @@ function refreshSelectedPanel() {
         selectedGroupId,
       );
     }
-
     return;
   }
 
@@ -651,8 +732,16 @@ function refreshSelectedPanel() {
 
     if (group?.isGroup) {
       renderGroupPanel(group);
+      return;
     }
   }
+
+  if (modelScenarioActive()) {
+    renderStandaloneModelScenarioPanel();
+    return;
+  }
+
+  closeEventPanelIfIdle();
 }
 
 function applyFilters() {
@@ -893,6 +982,317 @@ function renderContextGrid(container, context) {
   );
 }
 
+function makeWorkflowButton(
+  label,
+  className = 'workflow-button',
+) {
+  const button = makeElement(
+    'button',
+    className,
+    label,
+  );
+  button.type = 'button';
+  return button;
+}
+
+
+function formatImpactDistance(value) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return null;
+  }
+
+  return number < 10
+    ? `${number.toFixed(2)} km`
+    : `${number.toFixed(1)} km`;
+}
+
+
+function renderModelWorkflow(container, event) {
+  container.replaceChildren();
+
+  const eventHasCoordinates = Boolean(
+    Number.isFinite(Number(event?.latitude))
+    && Number.isFinite(Number(event?.longitude)),
+  );
+
+  const eventSeedEligible = eventCanSeedMarineModel(
+    event,
+  );
+
+  const seedAvailable = Boolean(driftSeed);
+  const forecastAvailable = Boolean(driftPayload);
+
+  const impactMatchesScenario = Boolean(
+    impactPayload,
+  );
+
+  const status = makeElement(
+    'div',
+    'workflow-status',
+  );
+
+  if (driftLoading && seedAvailable) {
+    status.textContent = t(
+      currentLanguage,
+      'workflow.modelBusy',
+    );
+  } else if (forecastAvailable) {
+    status.textContent = t(
+      currentLanguage,
+      seedStatusKey(
+        driftForecastSourceKind,
+        { forecastReady: true },
+      ),
+    );
+  } else if (seedAvailable) {
+    status.textContent = t(
+      currentLanguage,
+      seedStatusKey(driftSeedSourceKind),
+    );
+  } else {
+    status.textContent = t(
+      currentLanguage,
+      'workflow.awaiting',
+    );
+  }
+
+  const actions = makeElement(
+    'div',
+    'workflow-actions',
+  );
+
+  const prepareButton = makeWorkflowButton(
+    t(currentLanguage, 'workflow.prepare'),
+  );
+
+  prepareButton.disabled = (
+    !eventHasCoordinates
+    || !eventSeedEligible
+    || driftLoading
+  );
+
+  prepareButton.addEventListener(
+    'click',
+    () => {
+      prepareDriftFromEvent(event);
+    },
+  );
+
+  const screenButton = makeWorkflowButton(
+    t(
+      currentLanguage,
+      impactLoading
+        ? 'workflow.screeningButton'
+        : 'workflow.screen',
+      {
+        km: DEFAULT_IMPACT_THRESHOLD_KM,
+      },
+    ),
+    'workflow-button workflow-button--secondary',
+  );
+
+  screenButton.disabled = (
+    !forecastAvailable
+    || driftLoading
+    || impactLoading
+  );
+
+  screenButton.addEventListener(
+    'click',
+    () => {
+      void runImpactScreening(event);
+    },
+  );
+
+  if (event) {
+    actions.append(prepareButton);
+  }
+
+  actions.append(screenButton);
+
+  container.append(
+    status,
+    actions,
+  );
+
+  if (event && !eventSeedEligible) {
+    container.append(
+      makeElement(
+        'div',
+        'workflow-disclaimer',
+        t(
+          currentLanguage,
+          'workflow.eventPointUnavailable',
+        ),
+      ),
+    );
+  }
+
+  if (impactLoading) {
+    container.append(
+      makeElement(
+        'div',
+        'workflow-loading',
+        t(currentLanguage, 'workflow.screening'),
+      ),
+    );
+  } else if (impactErrorMessage) {
+    container.append(
+      makeElement(
+        'div',
+        'workflow-error',
+        t(
+          currentLanguage,
+          'workflow.screenError',
+          { message: impactErrorMessage },
+        ),
+      ),
+    );
+  } else if (impactMatchesScenario) {
+    const vm = impactSummaryViewModel(
+      impactPayload,
+    );
+
+    const heading = makeElement(
+      'div',
+      'workflow-result-title',
+      t(currentLanguage, 'workflow.summary'),
+    );
+
+    const summaryGrid = makeElement(
+      'div',
+      'workflow-summary-grid',
+    );
+
+    summaryGrid.append(
+      makeMetric(
+        t(currentLanguage, 'workflow.targets'),
+        String(vm.targetCount),
+      ),
+      makeMetric(
+        t(currentLanguage, 'workflow.withinThreshold'),
+        String(vm.withinThresholdCount),
+      ),
+      makeMetric(
+        t(currentLanguage, 'workflow.threshold'),
+        `${vm.thresholdKm} km`,
+      ),
+    );
+
+    const list = makeElement(
+      'div',
+      'workflow-assessment-list',
+    );
+
+    for (const assessment of vm.assessments) {
+      const target = assessment?.target ?? {};
+      const card = makeElement(
+        'article',
+        'workflow-assessment',
+      );
+
+      const top = makeElement(
+        'div',
+        'workflow-assessment__top',
+      );
+
+      top.append(
+        makeElement(
+          'div',
+          'workflow-assessment__name',
+          String(
+            target.name
+            ?? t(
+              currentLanguage,
+              'workflow.unknownTarget',
+            ),
+          ),
+        ),
+      );
+
+      top.append(
+        makeElement(
+          'span',
+          assessment?.potentially_affected
+            ? 'workflow-assessment__badge workflow-assessment__badge--within'
+            : 'workflow-assessment__badge',
+          t(
+            currentLanguage,
+            assessment?.potentially_affected
+              ? 'workflow.within'
+              : 'workflow.outside',
+          ),
+        ),
+      );
+
+      const meta = [];
+
+      if (
+        assessment?.first_exposure_hours
+        !== null
+        && assessment?.first_exposure_hours
+        !== undefined
+      ) {
+        meta.push(
+          t(
+            currentLanguage,
+            'workflow.firstExposure',
+            {
+              hours:
+                assessment.first_exposure_hours,
+            },
+          ),
+        );
+      }
+
+      const distance = formatImpactDistance(
+        assessment?.minimum_distance_km,
+      );
+
+      meta.push(
+        distance
+          ? t(
+            currentLanguage,
+            'workflow.closest',
+            { distance },
+          )
+          : t(
+            currentLanguage,
+            'workflow.noDistance',
+          ),
+      );
+
+      card.append(
+        top,
+        makeElement(
+          'div',
+          'workflow-assessment__meta',
+          meta.join(' · '),
+        ),
+      );
+
+      list.append(card);
+    }
+
+    container.append(
+      heading,
+      summaryGrid,
+      list,
+    );
+  }
+
+  container.append(
+    makeElement(
+      'div',
+      'workflow-disclaimer',
+      t(currentLanguage, 'workflow.disclaimer'),
+    ),
+  );
+}
+
+
 function renderEventPanel(event, originGroupId = null) {
   const token = ++panelRenderToken;
   const vm = eventDetailsViewModel(event, currentLanguage);
@@ -1128,6 +1528,33 @@ function renderEventPanel(event, originGroupId = null) {
 
   contextSection.append(contextGrid);
 
+  const workflowSection = makeElement(
+    'section',
+    'detail-section model-workflow',
+  );
+
+  workflowSection.append(
+    makeElement(
+      'div',
+      'detail-section__title',
+      t(currentLanguage, 'workflow.title'),
+    ),
+  );
+
+  const workflowContent = makeElement(
+    'div',
+    'workflow-content',
+  );
+
+  renderModelWorkflow(
+    workflowContent,
+    event,
+  );
+
+  workflowSection.append(
+    workflowContent,
+  );
+
   eventPanelContent.append(
     header,
     pills,
@@ -1135,6 +1562,7 @@ function renderEventPanel(event, originGroupId = null) {
     locationQuality,
     timeline,
     contextSection,
+    workflowSection,
     evidenceSection,
   );
 
@@ -1393,6 +1821,11 @@ function clearSelection() {
 
   updateSelectedCircle();
   updateSelectedGroupMarker();
+
+  if (modelScenarioActive()) {
+    renderStandaloneModelScenarioPanel();
+    return;
+  }
 
   eventPanel.classList.remove(
     'event-panel--open',
@@ -1742,16 +2175,208 @@ function renderDriftMap() {
 }
 
 
+function clearImpactMapData() {
+  setGeoJSONSourceData(
+    'impact-targets',
+    emptyFeatureCollection(),
+  );
+}
+
+
+function clearImpactScreening() {
+  impactRequestToken += 1;
+  impactPayload = null;
+  impactLoading = false;
+  impactErrorMessage = '';
+  impactEventId = null;
+  clearImpactMapData();
+}
+
+
+function renderImpactMap() {
+  setGeoJSONSourceData(
+    'impact-targets',
+    impactAssessmentsToFeatureCollection(
+      impactPayload,
+    ),
+  );
+}
+
+
+function prepareDriftFromEvent(event) {
+  if (!eventCanSeedMarineModel(event)) {
+    return;
+  }
+
+  const longitude = Number(event?.longitude);
+  const latitude = Number(event?.latitude);
+
+  if (
+    !Number.isFinite(longitude)
+    || !Number.isFinite(latitude)
+  ) {
+    return;
+  }
+
+  driftSelectionActive = false;
+  driftSelectionJustConsumed = false;
+  driftSeed = {
+    longitude,
+    latitude,
+  };
+  driftSeedSourceEventId = event.id;
+  driftForecastSourceEventId = null;
+  driftSeedSourceKind = 'event';
+  driftSeedSourceId = event.id;
+  driftForecastSourceKind = null;
+  driftForecastSourceId = null;
+  driftPayload = null;
+  driftErrorMessage = '';
+
+  clearImpactScreening();
+
+  map.getCanvas().style.cursor = '';
+  renderDriftMap();
+  renderDriftControls();
+  refreshSelectedPanel();
+}
+
+
+async function runImpactScreening(event = null) {
+  if (
+    impactLoading
+    || !driftPayload
+  ) {
+    return;
+  }
+
+  const requestToken = ++impactRequestToken;
+
+  impactLoading = true;
+  impactErrorMessage = '';
+  impactEventId = event?.id ?? null;
+
+  clearImpactMapData();
+  refreshSelectedPanel();
+
+  try {
+    const payload = await fetchDriftImpact(
+      driftPayload,
+      {
+        thresholdKm:
+          DEFAULT_IMPACT_THRESHOLD_KM,
+      },
+    );
+
+    if (requestToken !== impactRequestToken) {
+      return;
+    }
+
+    impactPayload = payload;
+    renderImpactMap();
+  } catch (error) {
+    if (requestToken !== impactRequestToken) {
+      return;
+    }
+
+    console.error(
+      '[Black Sea Eco Monitor / impact]',
+      error,
+    );
+
+    impactPayload = null;
+    impactErrorMessage =
+      error?.message || String(error);
+
+    clearImpactMapData();
+  } finally {
+    if (requestToken === impactRequestToken) {
+      impactLoading = false;
+      refreshSelectedPanel();
+    }
+  }
+}
+
+
+function installImpactLayer() {
+  map.addSource(
+    'impact-targets',
+    {
+      type: 'geojson',
+      data: emptyFeatureCollection(),
+    },
+  );
+
+  map.addLayer({
+    id: 'impact-targets-halo',
+    type: 'circle',
+    source: 'impact-targets',
+    paint: {
+      'circle-radius': [
+        'case',
+        ['==', ['get', 'withinThreshold'], true],
+        16,
+        11,
+      ],
+      'circle-color': [
+        'case',
+        ['==', ['get', 'withinThreshold'], true],
+        '#ffd166',
+        '#78dce8',
+      ],
+      'circle-opacity': [
+        'case',
+        ['==', ['get', 'withinThreshold'], true],
+        0.24,
+        0.11,
+      ],
+      'circle-blur': 0.45,
+    },
+  });
+
+  map.addLayer({
+    id: 'impact-targets',
+    type: 'circle',
+    source: 'impact-targets',
+    paint: {
+      'circle-radius': [
+        'case',
+        ['==', ['get', 'withinThreshold'], true],
+        7,
+        5,
+      ],
+      'circle-color': [
+        'case',
+        ['==', ['get', 'withinThreshold'], true],
+        '#ffd166',
+        '#78dce8',
+      ],
+      'circle-stroke-color': '#0a1720',
+      'circle-stroke-width': 2,
+      'circle-opacity': 0.94,
+    },
+  });
+}
+
+
 function clearDriftForecast() {
   driftSelectionActive = false;
   driftSeed = null;
   driftPayload = null;
   driftLoading = false;
   driftErrorMessage = '';
+  driftSeedSourceEventId = null;
+  driftForecastSourceEventId = null;
+  driftSeedSourceKind = null;
+  driftSeedSourceId = null;
+  driftForecastSourceKind = null;
+  driftForecastSourceId = null;
+  clearImpactScreening();
   stopLongTask('drift');
   map.getCanvas().style.cursor = '';
   clearDriftMapData();
   renderDriftControls();
+  refreshSelectedPanel();
 }
 
 
@@ -1762,8 +2387,13 @@ async function runDriftForecast() {
 
   driftLoading = true;
   driftErrorMessage = '';
+  driftForecastSourceEventId = null;
+  driftForecastSourceKind = null;
+  driftForecastSourceId = null;
+  clearImpactScreening();
   startLongTask('drift');
   renderDriftControls();
+  refreshSelectedPanel();
 
   try {
     const payload = await fetchDriftForecast({
@@ -1774,16 +2404,26 @@ async function runDriftForecast() {
     });
 
     driftPayload = payload;
+    driftForecastSourceEventId =
+      driftSeedSourceEventId;
+    driftForecastSourceKind =
+      driftSeedSourceKind;
+    driftForecastSourceId =
+      driftSeedSourceId;
     renderDriftMap();
   } catch (error) {
     console.error('[Black Sea Eco Monitor drift]', error);
     driftPayload = null;
+    driftForecastSourceEventId = null;
+    driftForecastSourceKind = null;
+    driftForecastSourceId = null;
     driftErrorMessage = error?.message || String(error);
     clearDriftMapData({ keepSeed: true });
   } finally {
     driftLoading = false;
     stopLongTask('drift');
     renderDriftControls();
+    refreshSelectedPanel();
   }
 }
 
@@ -2266,10 +2906,15 @@ for (const input of driftHorizonInputs) {
       renderDriftMap();
     } else if (driftPayload) {
       driftPayload = null;
+      driftForecastSourceEventId = null;
+      driftForecastSourceKind = null;
+      driftForecastSourceId = null;
+      clearImpactScreening();
       clearDriftMapData({ keepSeed: true });
     }
 
     renderDriftControls();
+    refreshSelectedPanel();
   });
 }
 
@@ -2813,6 +3458,39 @@ function renderSatelliteStatus() {
   );
 }
 
+function prepareDriftFromSatelliteCandidate(
+  feature,
+) {
+  const seed = satelliteCandidateSeed(feature);
+
+  if (!seed) {
+    return;
+  }
+
+  driftSelectionActive = false;
+  driftSelectionJustConsumed = false;
+  driftSeed = {
+    longitude: seed.longitude,
+    latitude: seed.latitude,
+  };
+  driftSeedSourceEventId = null;
+  driftForecastSourceEventId = null;
+  driftSeedSourceKind = seed.sourceKind;
+  driftSeedSourceId = seed.sourceId;
+  driftForecastSourceKind = null;
+  driftForecastSourceId = null;
+  driftPayload = null;
+  driftErrorMessage = '';
+
+  clearImpactScreening();
+
+  map.getCanvas().style.cursor = '';
+  renderDriftMap();
+  renderDriftControls();
+  refreshSelectedPanel();
+}
+
+
 function makeSatellitePopupContent(feature) {
   const vm = satelliteCandidateViewModel(feature);
   const root = makeElement(
@@ -2880,6 +3558,29 @@ function makeSatellitePopupContent(feature) {
       t(currentLanguage, 'satellite.disclaimer'),
     ),
   );
+
+  const candidateSeed = satelliteCandidateSeed(feature);
+
+  if (candidateSeed) {
+    const seedButton = makeWorkflowButton(
+      t(currentLanguage, 'satellite.useAsSeed'),
+      'workflow-button workflow-button--secondary',
+    );
+
+    seedButton.addEventListener(
+      'click',
+      () => {
+        prepareDriftFromSatelliteCandidate(feature);
+
+        if (satellitePopup) {
+          satellitePopup.remove();
+          satellitePopup = null;
+        }
+      },
+    );
+
+    root.append(seedButton);
+  }
 
   return root;
 }
@@ -3293,6 +3994,13 @@ map.on('click', (event) => {
     longitude: event.lngLat.lng,
     latitude: event.lngLat.lat,
   };
+  driftSeedSourceEventId = null;
+  driftForecastSourceEventId = null;
+  driftSeedSourceKind = 'manual';
+  driftSeedSourceId = null;
+  driftForecastSourceKind = null;
+  driftForecastSourceId = null;
+  clearImpactScreening();
   driftSelectionActive = false;
   driftSelectionJustConsumed = true;
 
@@ -3308,6 +4016,7 @@ map.on('click', (event) => {
 
   renderDriftMap();
   renderDriftControls();
+  refreshSelectedPanel();
 });
 
 
@@ -3317,6 +4026,7 @@ map.on('load', () => {
   installEventLayer();
   installCurrentLayer();
   installDriftLayer();
+  installImpactLayer();
   renderCurrentsStatus();
   renderCurrentDisplayControls();
   renderDriftControls();
