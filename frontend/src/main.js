@@ -51,14 +51,18 @@ import {
 } from './currentParticles.js';
 
 import {
+  DEFAULT_DRIFT_FORCING_MODE,
   DEFAULT_DRIFT_HORIZON,
   DEFAULT_DRIFT_PARTICLES,
+  DRIFT_FORCING_CURRENTS_PLUS_WIND,
   driftCenterGeoJSON,
   driftEnvelopeGeoJSON,
+  driftForcingViewModel,
   driftPointsGeoJSON,
   driftSeedGeoJSON,
   driftTrackGeoJSON,
   fetchDriftForecast,
+  normalizeDriftForcingMode,
   normalizeDriftHorizon,
   normalizeDriftParticles,
   snapshotForHorizon,
@@ -121,6 +125,10 @@ const PARTICLE_TRAIL_STORAGE_KEY =
 
 const DRIFT_HORIZON_STORAGE_KEY =
   'black-sea-eco-monitor.drift-horizon';
+
+// WEATHER1_4_FORCING_MODE_UI
+const DRIFT_FORCING_MODE_STORAGE_KEY =
+  'black-sea-eco-monitor.drift-forcing-mode';
 
 const DRIFT_PARTICLES_STORAGE_KEY =
   'black-sea-eco-monitor.drift-particles';
@@ -213,6 +221,17 @@ const driftCoordinate = document.getElementById(
 );
 const driftRunButton = document.getElementById(
   'drift-run',
+);
+const driftForcingInputs = [
+  ...document.querySelectorAll(
+    'input[name="drift-forcing-mode"]',
+  ),
+];
+const driftForcingDetails = document.getElementById(
+  'drift-forcing-details',
+);
+const driftScopeNote = document.getElementById(
+  'drift-scope-note',
 );
 const driftHorizonInputs = [
   ...document.querySelectorAll(
@@ -357,6 +376,13 @@ let satellitePopup = null;
 let currentsLoadingStartedAt = null;
 let driftLoadingStartedAt = null;
 let longTaskTicker = null;
+
+let driftForcingMode = normalizeDriftForcingMode(
+  window.localStorage.getItem(
+    DRIFT_FORCING_MODE_STORAGE_KEY,
+  ),
+  DEFAULT_DRIFT_FORCING_MODE,
+);
 
 let driftHorizon = normalizeDriftHorizon(
   window.localStorage.getItem(
@@ -1992,6 +2018,11 @@ function stopLongTask(kind) {
 
 
 function renderDriftControls() {
+  for (const input of driftForcingInputs) {
+    input.checked = input.value === driftForcingMode;
+    input.disabled = driftLoading;
+  }
+
   for (const input of driftHorizonInputs) {
     input.checked = Number(input.value) === driftHorizon;
   }
@@ -2002,6 +2033,62 @@ function renderDriftControls() {
 
   if (driftParticlesValue) {
     driftParticlesValue.textContent = String(driftParticles);
+  }
+
+  const forcingView = driftForcingViewModel(
+    driftPayload,
+    driftForcingMode,
+  );
+  const windagePercent = Math.round(
+    forcingView.windDriftFactor * 100,
+  );
+
+  if (driftForcingDetails) {
+    if (!forcingView.windEnabled) {
+      driftForcingDetails.textContent = t(
+        currentLanguage,
+        'drift.forcingCurrentSummary',
+      );
+    } else if (
+      forcingView.forecastReferenceTime
+    ) {
+      const source = forcingView.sources.length
+        ? forcingView.sources.join(', ')
+        : 'ECMWF';
+
+      driftForcingDetails.textContent = t(
+        currentLanguage,
+        'drift.forcingWindReady',
+        {
+          run: formatCurrentValidTime(
+            forcingView.forecastReferenceTime,
+            localeForLanguage(currentLanguage),
+          ),
+          source,
+          windage: windagePercent,
+        },
+      );
+    } else {
+      driftForcingDetails.textContent = t(
+        currentLanguage,
+        'drift.forcingWindPlanned',
+        {
+          windage: windagePercent,
+        },
+      );
+    }
+  }
+
+  if (driftScopeNote) {
+    driftScopeNote.textContent = t(
+      currentLanguage,
+      forcingView.windEnabled
+        ? 'drift.scopeCurrentsWind'
+        : 'drift.scopeCurrentOnly',
+      {
+        windage: windagePercent,
+      },
+    );
   }
 
   if (driftCoordinate) {
@@ -2401,6 +2488,7 @@ async function runDriftForecast() {
       latitude: driftSeed.latitude,
       hours: driftHorizon,
       particles: driftParticles,
+      forcingMode: driftForcingMode,
     });
 
     driftPayload = payload;
@@ -2887,6 +2975,41 @@ particleTrailSlider?.addEventListener(
 
 
 renderCurrentDisplayControls();
+
+
+for (const input of driftForcingInputs) {
+  input.addEventListener('change', () => {
+    if (!input.checked) return;
+
+    const nextMode = normalizeDriftForcingMode(
+      input.value,
+    );
+
+    if (nextMode === driftForcingMode) {
+      renderDriftControls();
+      return;
+    }
+
+    driftForcingMode = nextMode;
+
+    window.localStorage.setItem(
+      DRIFT_FORCING_MODE_STORAGE_KEY,
+      driftForcingMode,
+    );
+
+    // A forecast calculated with different physical forcing must
+    // never remain active after the user switches forcing mode.
+    if (driftPayload) {
+      driftPayload = null;
+      driftForecastSourceEventId = null;
+      clearImpactScreening();
+      clearDriftMapData({ keepSeed: true });
+    }
+
+    renderDriftControls();
+    refreshSelectedPanel();
+  });
+}
 
 
 for (const input of driftHorizonInputs) {

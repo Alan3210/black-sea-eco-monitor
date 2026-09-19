@@ -398,6 +398,47 @@
 
               <div id="drift-coordinate" class="drift-coordinate">—</div>
 
+              <div class="current-size-control__header drift-control__subhead" data-i18n="drift.forcing">
+                Физическое воздействие
+              </div>
+
+              <div
+                class="drift-horizon-grid drift-forcing-grid"
+                role="radiogroup"
+                aria-label="Режим внешнего воздействия прогноза дрейфа"
+                data-i18n-aria-label="drift.forcingAria"
+              >
+                <label>
+                  <input
+                    type="radio"
+                    name="drift-forcing-mode"
+                    value="current_only"
+                    checked
+                  />
+                  <span data-i18n="drift.forcingCurrentOnly">
+                    Только течения
+                  </span>
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="drift-forcing-mode"
+                    value="currents_plus_wind"
+                  />
+                  <span data-i18n="drift.forcingCurrentsWind">
+                    Течения + ветер
+                  </span>
+                </label>
+              </div>
+
+              <div
+                id="drift-forcing-details"
+                class="filter-note drift-forcing-details"
+                aria-live="polite"
+              >
+                Copernicus Marine · поверхностные течения · windage 0%
+              </div>
+
               <div class="current-size-control__header drift-control__subhead" data-i18n="drift.horizon">
                 Горизонт прогноза
               </div>
@@ -422,8 +463,12 @@
                 Рассчитать прогноз
               </button>
 
-              <div class="filter-note drift-scope-note" data-i18n="drift.scopeNote">
-                Модель переноса по поверхностным течениям. Ветер, волны и weathering нефти пока не учитываются.
+              <div
+                id="drift-scope-note"
+                class="filter-note drift-scope-note"
+                data-i18n="drift.scopeCurrentOnly"
+              >
+                Пассивный поверхностный трассер: только течения. Ветер, волны/Stokes drift и weathering нефти не учитываются.
               </div>
             </div>
 

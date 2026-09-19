@@ -1373,6 +1373,30 @@ h1 {
   color: #ffe08a;
 }
 
+/* WEATHER1_4_FORCING_MODE_UI */
+.drift-forcing-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 4px;
+}
+
+.drift-forcing-grid span {
+  min-height: 30px;
+  display: grid;
+  place-items: center;
+  line-height: 1.2;
+}
+
+.drift-forcing-details {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: 1px solid rgba(143, 232, 243, 0.10);
+  border-radius: 7px;
+  background: rgba(7, 20, 29, 0.38);
+  color: rgba(191, 235, 241, 0.62);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
 .drift-particle-control { margin-top: 8px; }
 
 .drift-run-button {
