@@ -1,0 +1,277 @@
+[
+  {
+    "id": "impact_001",
+    "name": "Novorossiysk",
+    "type": "settlement",
+    "position": {
+      "latitude": 44.724,
+      "longitude": 37.769
+    },
+    "source": "impact_registry_v01",
+    "importance": "medium"
+  },
+  {
+    "id": "impact_002",
+    "name": "Gelendzhik",
+    "type": "settlement",
+    "position": {
+      "latitude": 44.563,
+      "longitude": 38.078
+    },
+    "source": "impact_registry_v01",
+    "importance": "medium"
+  },
+  {
+    "id": "impact_003",
+    "name": "Anapa",
+    "type": "settlement",
+    "position": {
+      "latitude": 44.895,
+      "longitude": 37.316
+    },
+    "source": "impact_registry_v01",
+    "importance": "medium"
+  },
+  {
+    "id": "impact_004",
+    "name": "Sochi",
+    "type": "settlement",
+    "position": {
+      "latitude": 43.585,
+      "longitude": 39.723
+    },
+    "source": "impact_registry_v01",
+    "importance": "medium"
+  },
+  {
+    "id": "impact_005",
+    "name": "Tuapse",
+    "type": "settlement",
+    "position": {
+      "latitude": 44.1,
+      "longitude": 39.074
+    },
+    "source": "impact_registry_v01",
+    "importance": "medium"
+  },
+  {
+    "id": "impact_006",
+    "name": "Kerch",
+    "type": "settlement",
+    "position": {
+      "latitude": 45.356,
+      "longitude": 36.467
+    },
+    "source": "impact_registry_v01",
+    "importance": "medium"
+  },
+  {
+    "id": "impact_007",
+    "name": "Sevastopol",
+    "type": "settlement",
+    "position": {
+      "latitude": 44.616,
+      "longitude": 33.525
+    },
+    "source": "impact_registry_v01",
+    "importance": "medium"
+  },
+  {
+    "id": "impact_008",
+    "name": "Evpatoria",
+    "type": "settlement",
+    "position": {
+      "latitude": 45.19,
+      "longitude": 33.366
+    },
+    "source": "impact_registry_v01",
+    "importance": "medium"
+  },
+  {
+    "id": "impact_009",
+    "name": "Batumi",
+    "type": "settlement",
+    "position": {
+      "latitude": 41.616,
+      "longitude": 41.636
+    },
+    "source": "impact_registry_v01",
+    "importance": "medium"
+  },
+  {
+    "id": "impact_010",
+    "name": "Varna",
+    "type": "settlement",
+    "position": {
+      "latitude": 43.214,
+      "longitude": 27.914
+    },
+    "source": "impact_registry_v01",
+    "importance": "medium"
+  },
+  {
+    "id": "impact_011",
+    "name": "Novorossiysk Port",
+    "type": "port",
+    "position": {
+      "latitude": 44.68,
+      "longitude": 37.78
+    },
+    "source": "impact_registry_v01",
+    "importance": "high"
+  },
+  {
+    "id": "impact_012",
+    "name": "Tuapse Port",
+    "type": "port",
+    "position": {
+      "latitude": 44.092,
+      "longitude": 39.074
+    },
+    "source": "impact_registry_v01",
+    "importance": "high"
+  },
+  {
+    "id": "impact_013",
+    "name": "Sevastopol Port",
+    "type": "port",
+    "position": {
+      "latitude": 44.616,
+      "longitude": 33.52
+    },
+    "source": "impact_registry_v01",
+    "importance": "high"
+  },
+  {
+    "id": "impact_014",
+    "name": "Batumi Port",
+    "type": "port",
+    "position": {
+      "latitude": 41.65,
+      "longitude": 41.64
+    },
+    "source": "impact_registry_v01",
+    "importance": "high"
+  },
+  {
+    "id": "impact_015",
+    "name": "Varna Port",
+    "type": "port",
+    "position": {
+      "latitude": 43.19,
+      "longitude": 27.92
+    },
+    "source": "impact_registry_v01",
+    "importance": "high"
+  },
+  {
+    "id": "impact_016",
+    "name": "Utrish Reserve",
+    "type": "protected_area",
+    "position": {
+      "latitude": 44.7605,
+      "longitude": 37.3854
+    },
+    "source": "impact_registry_v01",
+    "importance": "high"
+  },
+  {
+    "id": "impact_017",
+    "name": "Sochi National Park",
+    "type": "protected_area",
+    "position": {
+      "latitude": 43.6,
+      "longitude": 39.8
+    },
+    "source": "impact_registry_v01",
+    "importance": "high"
+  },
+  {
+    "id": "impact_018",
+    "name": "Caucasus Biosphere Reserve",
+    "type": "protected_area",
+    "position": {
+      "latitude": 44.0,
+      "longitude": 40.3
+    },
+    "source": "impact_registry_v01",
+    "importance": "high"
+  },
+  {
+    "id": "impact_019",
+    "name": "Kazantip Reserve",
+    "type": "protected_area",
+    "position": {
+      "latitude": 45.47,
+      "longitude": 35.84
+    },
+    "source": "impact_registry_v01",
+    "importance": "high"
+  },
+  {
+    "id": "impact_020",
+    "name": "Danube Delta",
+    "type": "protected_area",
+    "position": {
+      "latitude": 45.17,
+      "longitude": 29.6
+    },
+    "source": "impact_registry_v01",
+    "importance": "high"
+  },
+  {
+    "id": "impact_021",
+    "name": "Anapa Coastal Zone",
+    "type": "coastal_zone",
+    "position": {
+      "latitude": 44.88,
+      "longitude": 37.3
+    },
+    "source": "impact_registry_v01",
+    "importance": "medium"
+  },
+  {
+    "id": "impact_022",
+    "name": "Gelendzhik Coastal Zone",
+    "type": "coastal_zone",
+    "position": {
+      "latitude": 44.56,
+      "longitude": 38.08
+    },
+    "source": "impact_registry_v01",
+    "importance": "medium"
+  },
+  {
+    "id": "impact_023",
+    "name": "Tuapse Coastal Zone",
+    "type": "coastal_zone",
+    "position": {
+      "latitude": 44.1,
+      "longitude": 39.08
+    },
+    "source": "impact_registry_v01",
+    "importance": "medium"
+  },
+  {
+    "id": "impact_024",
+    "name": "Krasnodar Coast Segment",
+    "type": "coastal_zone",
+    "position": {
+      "latitude": 44.7,
+      "longitude": 37.6
+    },
+    "source": "impact_registry_v01",
+    "importance": "medium"
+  },
+  {
+    "id": "impact_025",
+    "name": "Crimea Coastal Segment",
+    "type": "coastal_zone",
+    "position": {
+      "latitude": 45.0,
+      "longitude": 34.5
+    },
+    "source": "impact_registry_v01",
+    "importance": "medium"
+  }
+]

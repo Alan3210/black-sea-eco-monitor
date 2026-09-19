@@ -1,17 +1,20 @@
 from fastapi import APIRouter, Depends
 
-from agents.news_agent.event_store import EventStore
+
 
 from backend.schemas.impact import (
     DriftImpactRequest,
     DriftImpactResponse,
     ImpactTarget,
 )
+
 from backend.services.impact_service import (
     analyze_drift_impact,
-    build_targets_from_event_records,
 )
 
+from backend.services.impact_registry import (
+    get_impact_registry_targets,
+)
 
 router = APIRouter(
     prefix="/impact",
@@ -19,28 +22,13 @@ router = APIRouter(
 )
 
 
-def get_impact_event_store() -> EventStore:
-    return EventStore()
-
-
 @router.get(
     "/targets",
     response_model=list[ImpactTarget],
 )
-def get_impact_targets(
-    store: EventStore = Depends(
-        get_impact_event_store
-    ),
-) -> list[ImpactTarget]:
-    """
-    Return geolocated places currently known to the canonical EventStore.
+def get_impact_targets() -> list[ImpactTarget]:
 
-    v0.1 uses these as screening targets. This is not yet a complete
-    coastline/protected-area/settlement registry.
-    """
-    return build_targets_from_event_records(
-        store.list_event_records()
-    )
+    return get_impact_registry_targets()
 
 
 @router.post(
@@ -49,19 +37,9 @@ def get_impact_targets(
 )
 def analyze_drift_forecast(
     request: DriftImpactRequest,
-    store: EventStore = Depends(
-        get_impact_event_store
-    ),
 ) -> DriftImpactResponse:
-    """
-    Screen an existing OceanDrift forecast against known locations.
 
-    Important: this endpoint does NOT start OpenDrift, OpenOil, Copernicus,
-    or ECMWF downloads. The forecast is supplied by the caller.
-    """
-    targets = build_targets_from_event_records(
-        store.list_event_records()
-    )
+    targets = get_impact_registry_targets()
 
     return analyze_drift_impact(
         forecast=request.forecast,
