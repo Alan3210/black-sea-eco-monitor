@@ -6,6 +6,7 @@ from fastapi import (
 
 from agents.ocean_data.drift_forecast import (
     DEFAULT_DIFFUSIVITY_M2_S,
+    DEFAULT_FORCING_MODE,
     DEFAULT_HOURS,
     DEFAULT_PARTICLES,
     DEFAULT_RADIUS_M,
@@ -16,6 +17,7 @@ from agents.ocean_data.drift_forecast import (
     OceanDriftError,
     OceanDriftInputError,
     STANDARD_HORIZONS_HOURS,
+    SUPPORTED_FORCING_MODES,
     run_surface_drift,
 )
 
@@ -58,6 +60,14 @@ def get_drift_forecast(
             + "."
         ),
     ),
+    forcing_mode: str = Query(
+        default=DEFAULT_FORCING_MODE,
+        description=(
+            "Environmental forcing mode. Supported values: "
+            + ", ".join(SUPPORTED_FORCING_MODES)
+            + ". current_only is the backward-compatible default."
+        ),
+    ),
     particles: int = Query(
         default=DEFAULT_PARTICLES,
         ge=MIN_PARTICLES,
@@ -92,6 +102,7 @@ def get_drift_forecast(
             particles=particles,
             radius_m=radius_m,
             diffusivity_m2_s=diffusivity_m2_s,
+            forcing_mode=forcing_mode,
         )
     except OceanDriftInputError as exc:
         raise HTTPException(

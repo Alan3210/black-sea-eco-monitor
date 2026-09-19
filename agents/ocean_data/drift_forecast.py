@@ -32,6 +32,16 @@ DEFAULT_OUTPUT_STEP_SECONDS = 3600
 DEFAULT_CACHE_TTL_SECONDS = 15 * 60
 FORCING_MARGIN_DEG = 4.0
 
+# WEATHER1_3B_CURRENTS_PLUS_WIND
+FORCING_MODE_CURRENT_ONLY = "current_only"
+FORCING_MODE_CURRENTS_PLUS_WIND = "currents_plus_wind"
+SUPPORTED_FORCING_MODES = (
+    FORCING_MODE_CURRENT_ONLY,
+    FORCING_MODE_CURRENTS_PLUS_WIND,
+)
+DEFAULT_FORCING_MODE = FORCING_MODE_CURRENT_ONLY
+DEFAULT_WIND_DRIFT_FACTOR = 0.02
+
 MIN_PARTICLES = 50
 MAX_PARTICLES = 2000
 MAX_RADIUS_M = 20_000.0
@@ -44,6 +54,45 @@ class OceanDriftError(RuntimeError):
 
 class OceanDriftInputError(ValueError):
     pass
+
+
+def normalize_forcing_mode(
+    value: str | None,
+) -> str:
+    mode = str(value or DEFAULT_FORCING_MODE).strip().lower()
+
+    if mode not in SUPPORTED_FORCING_MODES:
+        raise OceanDriftInputError(
+            "forcing_mode must be one of: "
+            + ", ".join(SUPPORTED_FORCING_MODES)
+            + "."
+        )
+
+    return mode
+
+
+def drift_scope(
+    forcing_mode: str,
+) -> str:
+    mode = normalize_forcing_mode(forcing_mode)
+
+    if mode == FORCING_MODE_CURRENTS_PLUS_WIND:
+        return (
+            "passive_surface_tracer_currents_plus_direct_windage"
+        )
+
+    return "passive_surface_tracer_current_only"
+
+
+def wind_drift_factor_for_mode(
+    forcing_mode: str,
+) -> float:
+    mode = normalize_forcing_mode(forcing_mode)
+
+    if mode == FORCING_MODE_CURRENTS_PLUS_WIND:
+        return DEFAULT_WIND_DRIFT_FACTOR
+
+    return 0.0
 
 
 def _utc_now() -> datetime:
@@ -209,6 +258,7 @@ def _cache_key(
     particles: int,
     radius_m: float,
     diffusivity_m2_s: float,
+    forcing_mode: str = DEFAULT_FORCING_MODE,
 ) -> str:
     canonical = json.dumps(
         {
@@ -221,6 +271,9 @@ def _cache_key(
             "diffusivity_m2_s": round(
                 diffusivity_m2_s,
                 3,
+            ),
+            "forcing_mode": normalize_forcing_mode(
+                forcing_mode
             ),
         },
         sort_keys=True,
@@ -369,6 +422,8 @@ def _run_opendrift(
     particles: int,
     radius_m: float,
     diffusivity_m2_s: float,
+    wind_reader=None,
+    wind_drift_factor: float = 0.0,
 ):
     try:
         from opendrift.models.oceandrift import (
@@ -390,7 +445,11 @@ def _run_opendrift(
 
     model.add_reader(reader)
 
-    # v0.9 Step 1 = current-only passive surface tracer.
+    if wind_reader is not None:
+        model.add_reader(wind_reader)
+
+    # Surface tracer: currents are always enabled.
+    # WEATHER-1.3B optionally adds direct windage through OpenDrift.
     model.set_config(
         "drift:vertical_mixing",
         False,
@@ -421,7 +480,7 @@ def _run_opendrift(
             tzinfo=None
         ),
         z=0,
-        wind_drift_factor=0.0,
+        wind_drift_factor=float(wind_drift_factor),
         current_drift_factor=1.0,
     )
 
@@ -823,7 +882,27 @@ def build_drift_payload(
     radius_m: float,
     diffusivity_m2_s: float,
     opendrift_version: str | None = None,
+    forcing_mode: str = DEFAULT_FORCING_MODE,
+    wind_forcing_provenance: dict | None = None,
 ) -> dict:
+    forcing_mode = normalize_forcing_mode(
+        forcing_mode
+    )
+    wind_factor = wind_drift_factor_for_mode(
+        forcing_mode
+    )
+
+    not_included = [
+        "wave / Stokes drift",
+        "oil weathering",
+        "evaporation",
+        "emulsification",
+        "oil viscosity changes",
+    ]
+
+    if forcing_mode == FORCING_MODE_CURRENT_ONLY:
+        not_included.insert(0, "wind forcing")
+
     snapshots = [
         _snapshot(
             result,
@@ -838,9 +917,8 @@ def build_drift_payload(
     return {
         "model": "OpenDrift OceanDrift",
         "model_version": opendrift_version,
-        "scope": (
-            "passive_surface_tracer_current_only"
-        ),
+        "scope": drift_scope(forcing_mode),
+        "forcing_mode": forcing_mode,
         "forcing": {
             "source": "Copernicus Marine",
             "dataset_id": DATASET_ID,
@@ -849,6 +927,15 @@ def build_drift_payload(
             "bbox": forcing_bbox(
                 longitude=longitude,
                 latitude=latitude,
+            ),
+            "wind": (
+                wind_forcing_provenance
+                if forcing_mode
+                == FORCING_MODE_CURRENTS_PLUS_WIND
+                else {
+                    "enabled": False,
+                    "reason": "current_only forcing mode",
+                }
             ),
         },
         "seed": {
@@ -885,18 +972,13 @@ def build_drift_payload(
             "horizontal_diffusivity_m2_s": float(
                 diffusivity_m2_s
             ),
-            "wind_drift_factor": 0.0,
+            "wind_drift_factor": float(
+                wind_factor
+            ),
             "current_drift_factor": 1.0,
             "coastline_action": "previous",
         },
-        "not_included": [
-            "wind forcing",
-            "wave / Stokes drift",
-            "oil weathering",
-            "evaporation",
-            "emulsification",
-            "oil viscosity changes",
-        ],
+        "not_included": not_included,
         "horizons": snapshots,
         "mean_track": _mean_track(
             result
@@ -914,6 +996,7 @@ def run_surface_drift(
     radius_m: float = DEFAULT_RADIUS_M,
     diffusivity_m2_s: float = DEFAULT_DIFFUSIVITY_M2_S,
     cache_ttl_seconds: int = DEFAULT_CACHE_TTL_SECONDS,
+    forcing_mode: str = DEFAULT_FORCING_MODE,
 ) -> dict:
     validate_drift_request(
         longitude=longitude,
@@ -922,6 +1005,10 @@ def run_surface_drift(
         particles=particles,
         radius_m=radius_m,
         diffusivity_m2_s=diffusivity_m2_s,
+    )
+
+    forcing_mode = normalize_forcing_mode(
+        forcing_mode
     )
 
     start_time = normalize_target_time(
@@ -936,6 +1023,7 @@ def run_surface_drift(
         particles=particles,
         radius_m=radius_m,
         diffusivity_m2_s=diffusivity_m2_s,
+        forcing_mode=forcing_mode,
     )
 
     cached = _read_cache(
@@ -953,6 +1041,9 @@ def run_surface_drift(
         return cached
 
     dataset = None
+    wind_forcing = None
+    wind_reader = None
+    wind_forcing_provenance = None
 
     try:
         dataset = _open_forcing_dataset(
@@ -961,6 +1052,38 @@ def run_surface_drift(
             longitude=longitude,
             latitude=latitude,
         )
+
+        if (
+            forcing_mode
+            == FORCING_MODE_CURRENTS_PLUS_WIND
+        ):
+            try:
+                from backend.services.ecmwf_wind_forcing import (
+                    EcmwfWindForcingBuilder,
+                    build_opendrift_wind_reader,
+                )
+            except ImportError as exc:
+                raise OceanDriftError(
+                    "WEATHER-1.3A wind forcing module "
+                    "is not available."
+                ) from exc
+
+            wind_forcing = (
+                EcmwfWindForcingBuilder().build(
+                    start_time=start_time,
+                    hours=hours,
+                    bbox=forcing_bbox(
+                        longitude=longitude,
+                        latitude=latitude,
+                    ),
+                )
+            )
+            wind_reader = build_opendrift_wind_reader(
+                wind_forcing
+            )
+            wind_forcing_provenance = (
+                wind_forcing.provenance()
+            )
 
         result = _run_opendrift(
             dataset=dataset,
@@ -971,6 +1094,12 @@ def run_surface_drift(
             particles=particles,
             radius_m=radius_m,
             diffusivity_m2_s=diffusivity_m2_s,
+            wind_reader=wind_reader,
+            wind_drift_factor=(
+                wind_drift_factor_for_mode(
+                    forcing_mode
+                )
+            ),
         )
 
         try:
@@ -994,6 +1123,10 @@ def run_surface_drift(
             radius_m=radius_m,
             diffusivity_m2_s=diffusivity_m2_s,
             opendrift_version=version,
+            forcing_mode=forcing_mode,
+            wind_forcing_provenance=(
+                wind_forcing_provenance
+            ),
         )
 
         payload["generated_at"] = (
@@ -1029,6 +1162,15 @@ def run_surface_drift(
         ) from exc
 
     finally:
+        if (
+            wind_forcing is not None
+            and hasattr(
+                wind_forcing.dataset,
+                "close",
+            )
+        ):
+            wind_forcing.dataset.close()
+
         if (
             dataset is not None
             and hasattr(
