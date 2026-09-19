@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 
+from backend.api.wind_field import router as wind_field_router
+
 from backend.api.impact import router as impact_router
 from backend.api.impact_registry import router as impact_registry_router
 from backend.api.weather import router as weather_router
@@ -98,6 +100,11 @@ app.include_router(
     monitor_dashboard_router,
     prefix="/monitor/dashboard",
     tags=["monitor"],
+)
+
+
+app.include_router(
+    wind_field_router
 )
 
 
