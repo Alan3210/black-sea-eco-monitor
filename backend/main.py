@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from backend.api.wind_field import router as wind_field_router
 from backend.api.air_field import router as air_field_router
+from backend.api.satellite_air_field import router as satellite_air_field_router
 
 from backend.api.impact import router as impact_router
 from backend.api.impact_registry import router as impact_registry_router
@@ -118,3 +119,4 @@ def root():
     }
 
 app.include_router(air_field_router)
+app.include_router(satellite_air_field_router)

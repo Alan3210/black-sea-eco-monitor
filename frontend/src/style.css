@@ -2356,3 +2356,137 @@ h1 {
   line-height: 1.45;
 }
 
+/* AIR-1.4C TROPOMI Web GIS */
+.tropomi-air-root {
+  margin-top: 12px;
+}
+
+.tropomi-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(13, 20, 31, 0.58);
+  backdrop-filter: blur(8px);
+}
+
+.tropomi-card__head,
+.tropomi-field,
+.tropomi-opacity,
+.tropomi-selected,
+.tropomi-meta > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tropomi-card__title {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tropomi-card__subtitle,
+.tropomi-hint,
+.tropomi-disclaimer,
+.tropomi-status {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.35;
+  opacity: 0.72;
+}
+
+.tropomi-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+
+.tropomi-field,
+.tropomi-opacity,
+.tropomi-selected {
+  margin-top: 9px;
+  font-size: 10px;
+}
+
+.tropomi-field select {
+  min-width: 104px;
+}
+
+.tropomi-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.tropomi-metrics > div {
+  border-radius: 8px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tropomi-metrics span,
+.tropomi-metrics strong {
+  display: block;
+}
+
+.tropomi-metrics span {
+  font-size: 9px;
+  opacity: 0.6;
+}
+
+.tropomi-metrics strong {
+  margin-top: 2px;
+  font-size: 10px;
+}
+
+.tropomi-legend {
+  margin-top: 8px;
+}
+
+.tropomi-legend__bar {
+  height: 7px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    #31498F 0%,
+    #2B8BC6 25%,
+    #46B7A9 50%,
+    #E6C85A 75%,
+    #D76A55 100%
+  );
+}
+
+.tropomi-legend__labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-size: 9px;
+  opacity: 0.72;
+}
+
+.tropomi-meta {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 10px;
+}
+
+.tropomi-opacity input[type="range"] {
+  width: 84px;
+}
+
+.tropomi-selected strong {
+  text-align: right;
+}
+
+.tropomi-status {
+  min-height: 14px;
+}
+
+.tropomi-disclaimer {
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
