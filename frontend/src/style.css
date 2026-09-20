@@ -2490,3 +2490,171 @@ h1 {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+/* AIR-1.5D GEOS-CF Web GIS */
+.geos-cf-air-root {
+  margin-top: 12px;
+}
+
+.geos-cf-card,
+.geos-crosscheck-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(13, 20, 31, 0.58);
+  backdrop-filter: blur(8px);
+}
+
+.geos-crosscheck-card {
+  margin-top: 8px;
+}
+
+.geos-cf-card__head,
+.geos-cf-field,
+.geos-cf-opacity,
+.geos-cf-selected,
+.geos-cf-meta > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.geos-cf-card__title,
+.geos-crosscheck-card__title {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.geos-cf-card__subtitle,
+.geos-crosscheck-card__subtitle,
+.geos-cf-hint,
+.geos-cf-status,
+.geos-cf-disclaimer,
+.geos-crosscheck-status,
+.geos-crosscheck-note {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.35;
+  opacity: 0.72;
+}
+
+.geos-cf-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+
+.geos-cf-field,
+.geos-cf-opacity,
+.geos-cf-selected {
+  margin-top: 9px;
+  font-size: 10px;
+}
+
+.geos-cf-field select {
+  min-width: 104px;
+}
+
+.geos-cf-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.geos-cf-metrics > div,
+.geos-crosscheck-grid > div {
+  border-radius: 8px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.geos-cf-metrics span,
+.geos-cf-metrics strong,
+.geos-crosscheck-grid span,
+.geos-crosscheck-grid strong {
+  display: block;
+}
+
+.geos-cf-metrics span,
+.geos-crosscheck-grid span {
+  font-size: 9px;
+  opacity: 0.6;
+}
+
+.geos-cf-metrics strong,
+.geos-crosscheck-grid strong {
+  margin-top: 2px;
+  font-size: 10px;
+}
+
+.geos-cf-legend {
+  margin-top: 8px;
+}
+
+.geos-cf-legend__bar {
+  height: 7px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    #40539C 0%,
+    #2A86B8 25%,
+    #45B3A0 50%,
+    #E5C85E 75%,
+    #D36B58 100%
+  );
+}
+
+.geos-cf-legend__labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-size: 9px;
+  opacity: 0.72;
+}
+
+.geos-cf-meta {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 10px;
+}
+
+.geos-cf-opacity input[type="range"] {
+  width: 84px;
+}
+
+.geos-cf-selected strong {
+  text-align: right;
+}
+
+.geos-cf-status,
+.geos-crosscheck-status {
+  min-height: 14px;
+}
+
+.geos-cf-disclaimer,
+.geos-crosscheck-note {
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.geos-crosscheck-button {
+  width: 100%;
+  margin-top: 9px;
+  min-height: 32px;
+}
+
+.geos-crosscheck-button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.geos-crosscheck-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  margin-top: 8px;
+}
+

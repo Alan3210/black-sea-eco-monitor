@@ -53,6 +53,7 @@ import {
   normalizeCamsOpacityPercent,
 } from './camsAirOperationalField.js';
 import { installTropomiSatelliteLayer } from './tropomiOperationalField.js';
+import { installGeosCfAirLayer } from './geosCfOperationalField.js';
 
 import {
   fetchWindField,
@@ -6161,6 +6162,7 @@ map.on('load', () => {
   installWindLayer();
    installCamsAirLayer();
    installTropomiSatelliteLayer(map);
+   installGeosCfAirLayer(map);
   installDriftLayer();
   installImpactLayer();
   renderCurrentsStatus();
