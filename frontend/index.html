@@ -685,6 +685,122 @@
             >
               Стрелки показывают, куда движется воздух. Метеорологическое направление FROM показано по клику.
             </div>
+
+            <div class="cams-air-subsection">
+              <label class="filter-check filter-check--layer">
+                <input
+                  id="cams-air-layer-toggle"
+                  type="checkbox"
+                />
+                <span class="cams-air-layer-symbol" aria-hidden="true">AIR</span>
+                <span data-i18n="air.cams">
+                  Качество воздуха · CAMS
+                </span>
+              </label>
+
+              <div
+                id="cams-air-panel"
+                class="filter-note cams-air-note"
+                aria-live="polite"
+                data-i18n="air.off"
+              >
+                CAMS · слой выключен
+              </div>
+
+              <div class="current-size-control cams-air-control">
+                <div class="current-size-control__header">
+                  <span data-i18n="air.pollutant">
+                    Загрязнитель
+                  </span>
+                </div>
+
+                <select
+                  id="cams-air-pollutant"
+                  aria-label="Air pollutant"
+                >
+                  <option value="pm25">PM2.5</option>
+                  <option value="pm10">PM10</option>
+                  <option value="no2">NO₂</option>
+                  <option value="so2">SO₂</option>
+                  <option value="o3">O₃</option>
+                </select>
+              </div>
+
+              <div
+                id="cams-air-operational"
+                class="cams-air-operational"
+                hidden
+              >
+                <div class="cams-air-model-row">
+                  <span data-i18n="air.modelForecast">
+                    Модельный прогноз · CAMS Ensemble
+                  </span>
+                  <strong id="cams-air-valid-time">—</strong>
+                </div>
+
+                <div class="cams-air-stat-grid">
+                  <div>
+                    <span data-i18n="air.minimum">МИН</span>
+                    <strong id="cams-air-min">—</strong>
+                  </div>
+                  <div>
+                    <span data-i18n="air.mean">СРЕДН</span>
+                    <strong id="cams-air-mean">—</strong>
+                  </div>
+                  <div>
+                    <span data-i18n="air.maximum">МАКС</span>
+                    <strong id="cams-air-max">—</strong>
+                  </div>
+                </div>
+
+                <div id="cams-air-units" class="cams-air-units">
+                  µg/m³
+                </div>
+
+                <div class="cams-air-legend">
+                  <div class="cams-air-legend__bar" aria-hidden="true"></div>
+                  <div class="cams-air-legend__labels">
+                    <span id="cams-air-legend-min">—</span>
+                    <span id="cams-air-legend-mid">—</span>
+                    <span id="cams-air-legend-max">—</span>
+                  </div>
+                </div>
+
+                <div class="current-size-control cams-air-opacity-control">
+                  <div class="current-size-control__header">
+                    <span data-i18n="air.opacity">
+                      Прозрачность поля
+                    </span>
+                    <output
+                      id="cams-air-opacity-value"
+                      class="current-size-control__value"
+                      for="cams-air-opacity"
+                    >
+                      55%
+                    </output>
+                  </div>
+
+                  <input
+                    id="cams-air-opacity"
+                    class="current-size-control__slider"
+                    type="range"
+                    min="20"
+                    max="90"
+                    step="5"
+                    value="55"
+                    data-i18n-aria-label="air.opacityAria"
+                    aria-label="Прозрачность поля CAMS"
+                  />
+                </div>
+
+                <div
+                  class="filter-note cams-air-click-note"
+                  data-i18n="air.clickHint"
+                >
+                  Кликните по полю, чтобы увидеть локальную модельную концентрацию.
+                </div>
+              </div>
+            </div>
           </div>
 
             <div class="drift-control">

@@ -2165,3 +2165,194 @@ h1 {
   }
 }
 
+
+
+/* AIR-1.3C.8 CAMS air quality */
+.cams-air-layer-symbol {
+  width: 26px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(103, 232, 249, .35);
+  border-radius: 5px;
+  color: #a5f3fc;
+  background: rgba(34,211,238,.10);
+  font-size: 7px;
+  font-weight: 900;
+}
+
+.cams-air-note {
+  min-height: 30px;
+}
+
+.cams-air-control select {
+  width: 100%;
+  border: 1px solid rgba(157,220,236,.12);
+  border-radius: 7px;
+  padding: 6px;
+  background: rgba(255,255,255,.04);
+  color: #e8f1f7;
+}
+
+
+/* AIR-1.3C.8.4 · visible CAMS atmosphere subsection */
+.cams-air-subsection {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(103, 232, 249, 0.14);
+}
+
+.cams-air-subsection .cams-air-layer-symbol {
+  flex: 0 0 auto;
+}
+
+.cams-air-control {
+  margin-top: 8px;
+}
+
+.cams-air-control select {
+  cursor: pointer;
+}
+
+.cams-air-note--loading {
+  color: rgba(125, 211, 252, 0.88);
+}
+
+.cams-air-note--error {
+  color: #ff9595;
+}
+
+/* ---------------------------------------------------------
+   AIR-1.3C.9 · Operational CAMS concentration field
+   --------------------------------------------------------- */
+
+.cams-air-operational[hidden] {
+  display: none !important;
+}
+
+.cams-air-operational {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgba(103, 232, 249, 0.13);
+  border-radius: 9px;
+  background: rgba(4, 18, 30, 0.34);
+}
+
+.cams-air-model-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: rgba(232, 241, 247, 0.46);
+  font-size: 8px;
+  line-height: 1.35;
+}
+
+.cams-air-model-row strong {
+  color: rgba(215, 249, 252, 0.82);
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.cams-air-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.cams-air-stat-grid > div {
+  padding: 7px 5px;
+  border: 1px solid rgba(157, 220, 236, 0.08);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.025);
+  text-align: center;
+}
+
+.cams-air-stat-grid span {
+  display: block;
+  color: rgba(232, 241, 247, 0.36);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.cams-air-stat-grid strong {
+  display: block;
+  margin-top: 4px;
+  color: #e8f1f7;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.cams-air-units {
+  margin-top: 5px;
+  color: rgba(232, 241, 247, 0.48);
+  font-size: 8px;
+  text-align: right;
+}
+
+.cams-air-legend {
+  margin-top: 9px;
+}
+
+.cams-air-legend__bar {
+  height: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      90deg,
+      #3157d5 0%,
+      #2aa9e0 25%,
+      #5fd3c7 50%,
+      #f2c94c 75%,
+      #eb5757 100%
+    );
+}
+
+.cams-air-legend__labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  color: rgba(232, 241, 247, 0.42);
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: 8px;
+}
+
+.cams-air-opacity-control {
+  margin-top: 9px;
+}
+
+.cams-air-opacity-control .current-size-control__value {
+  color: #7dd3fc;
+}
+
+.cams-air-click-note {
+  margin-top: 8px;
+  color: rgba(232, 241, 247, 0.42);
+}
+
+.cams-air-popup .ocean-current-popup__title {
+  color: #7dd3fc;
+}
+
+.cams-air-popup__disclaimer {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(125, 211, 252, 0.13);
+  color: rgba(191, 239, 255, 0.58);
+  font-size: 8px;
+  line-height: 1.45;
+}
+

@@ -43,6 +43,17 @@ import {
 } from './currents.js';
 
 import {
+  CAMS_RUNTIME_CONFIG,
+} from './camsAirLiveIntegration.js';
+
+import {
+  buildCamsAirCellGeoJSON,
+  camsFieldViewModel,
+  camsFillColorExpression,
+  normalizeCamsOpacityPercent,
+} from './camsAirOperationalField.js';
+
+import {
   fetchWindField,
   formatWindSpeed,
   normalizeWindArrowSizePercent,
@@ -131,6 +142,8 @@ const CURRENTS_REFRESH_INTERVAL_MS = 15 * 60_000;
 const CURRENTS_STRIDE = 10;
 const WIND_REFRESH_INTERVAL_MS = 15 * 60_000;
 const WIND_STRIDE = 2;
+const CAMS_AIR_OPACITY_STORAGE_KEY =
+  'black-sea-eco-monitor.cams-air-opacity';
 const WIND_ARROW_SIZE_STORAGE_KEY =
   'black-sea-eco-monitor.wind-arrow-size';
 const WIND_DISPLAY_MODE_STORAGE_KEY =
@@ -197,6 +210,49 @@ const currentsArrowSizeSlider = document.getElementById(
 );
 const currentsArrowSizeValue = document.getElementById(
   'currents-arrow-size-value',
+);
+
+const camsAirToggle = document.getElementById(
+  'cams-air-layer-toggle',
+);
+const camsAirNote = document.getElementById(
+  'cams-air-panel',
+);
+const camsAirPollutantSelect = document.getElementById(
+  'cams-air-pollutant',
+);
+const camsAirOperational = document.getElementById(
+  'cams-air-operational',
+);
+const camsAirValidTime = document.getElementById(
+  'cams-air-valid-time',
+);
+const camsAirMin = document.getElementById(
+  'cams-air-min',
+);
+const camsAirMean = document.getElementById(
+  'cams-air-mean',
+);
+const camsAirMax = document.getElementById(
+  'cams-air-max',
+);
+const camsAirUnits = document.getElementById(
+  'cams-air-units',
+);
+const camsAirLegendMin = document.getElementById(
+  'cams-air-legend-min',
+);
+const camsAirLegendMid = document.getElementById(
+  'cams-air-legend-mid',
+);
+const camsAirLegendMax = document.getElementById(
+  'cams-air-legend-max',
+);
+const camsAirOpacitySlider = document.getElementById(
+  'cams-air-opacity',
+);
+const camsAirOpacityValue = document.getElementById(
+  'cams-air-opacity-value',
 );
 
 const windToggle = document.getElementById(
@@ -414,6 +470,19 @@ let currentsPayload = null;
 let currentsLoading = false;
 let currentsErrorMessage = '';
 let currentsPopup = null;
+
+let camsAirPayload = null;
+let camsAirLoading = false;
+let camsAirErrorMessage = '';
+let camsAirPollutant = 'pm25';
+let camsAirPopup = null;
+let camsAirOpacityPercent =
+  normalizeCamsOpacityPercent(
+    window.localStorage.getItem(
+      CAMS_AIR_OPACITY_STORAGE_KEY,
+    ),
+    55,
+  );
 
 let windPayload = null;
 let windLoading = false;
@@ -4192,6 +4261,456 @@ function createWindArrowImage() {
 }
 
 
+
+// AIR-1.3C.9 · operational CAMS field.
+function formatCamsConcentration(value) {
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric)) return '—';
+
+  return new Intl.NumberFormat(
+    localeForLanguage(currentLanguage),
+    {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    },
+  ).format(numeric);
+}
+
+
+function camsAirLayerVisible() {
+  return Boolean(camsAirToggle?.checked);
+}
+
+
+function applyCamsAirOpacity() {
+  if (camsAirOpacitySlider) {
+    camsAirOpacitySlider.value =
+      String(camsAirOpacityPercent);
+  }
+
+  if (camsAirOpacityValue) {
+    camsAirOpacityValue.textContent =
+      `${camsAirOpacityPercent}%`;
+  }
+
+  if (map.getLayer(CAMS_RUNTIME_CONFIG.layerId)) {
+    map.setPaintProperty(
+      CAMS_RUNTIME_CONFIG.layerId,
+      'fill-opacity',
+      camsAirOpacityPercent / 100,
+    );
+  }
+}
+
+
+function renderCamsAirOperational() {
+  if (!camsAirOperational) return;
+
+  const visible = Boolean(
+    camsAirPayload
+    && camsAirLayerVisible()
+    && !camsAirErrorMessage
+  );
+
+  camsAirOperational.hidden = !visible;
+  if (!visible) return;
+
+  const view =
+    camsFieldViewModel(camsAirPayload);
+
+  if (camsAirValidTime) {
+    camsAirValidTime.textContent =
+      view.validTime
+        ? (
+          formatCurrentValidTime(
+            view.validTime,
+            localeForLanguage(currentLanguage),
+          )
+          + (
+            Number.isFinite(view.leadHour)
+              ? ` · +${view.leadHour} h`
+              : ''
+          )
+        )
+        : '—';
+  }
+
+  if (camsAirMin) {
+    camsAirMin.textContent =
+      formatCamsConcentration(view.minimum);
+  }
+
+  if (camsAirMean) {
+    camsAirMean.textContent =
+      formatCamsConcentration(view.mean);
+  }
+
+  if (camsAirMax) {
+    camsAirMax.textContent =
+      formatCamsConcentration(view.maximum);
+  }
+
+  if (camsAirUnits) {
+    camsAirUnits.textContent = view.units;
+  }
+
+  if (camsAirLegendMin) {
+    camsAirLegendMin.textContent =
+      formatCamsConcentration(view.legendMin);
+  }
+
+  if (camsAirLegendMid) {
+    camsAirLegendMid.textContent =
+      formatCamsConcentration(view.legendMid);
+  }
+
+  if (camsAirLegendMax) {
+    camsAirLegendMax.textContent =
+      formatCamsConcentration(view.legendMax);
+  }
+
+  applyCamsAirOpacity();
+}
+
+
+function makeCamsAirPopupContent(properties) {
+  const root = document.createElement('div');
+  root.className =
+    'ocean-current-popup cams-air-popup';
+
+  const title = document.createElement('div');
+  title.className =
+    'ocean-current-popup__title';
+  title.textContent =
+    t(currentLanguage, 'air.popupTitle');
+
+  root.append(title);
+
+  const view =
+    camsFieldViewModel(camsAirPayload);
+
+  const rows = [
+    [
+      t(currentLanguage, 'air.value'),
+      `${formatCamsConcentration(
+        properties.value,
+      )} ${view.units}`,
+    ],
+    [
+      t(currentLanguage, 'air.pollutant'),
+      view.pollutant,
+    ],
+    [
+      t(currentLanguage, 'air.validTime'),
+      view.validTime
+        ? formatCurrentValidTime(
+          view.validTime,
+          localeForLanguage(currentLanguage),
+        )
+        : '—',
+    ],
+    [
+      t(currentLanguage, 'air.forecastRun'),
+      view.runTime
+        ? (
+          `${formatCurrentValidTime(
+            view.runTime,
+            localeForLanguage(currentLanguage),
+          )}`
+          + (
+            Number.isFinite(view.leadHour)
+              ? ` · +${view.leadHour} h`
+              : ''
+          )
+        )
+        : '—',
+    ],
+    [
+      t(currentLanguage, 'air.model'),
+      `CAMS ${view.model}`,
+    ],
+  ];
+
+  for (const [label, value] of rows) {
+    const row = document.createElement('div');
+    row.className =
+      'ocean-current-popup__row';
+
+    const key = document.createElement('div');
+    key.className =
+      'ocean-current-popup__key';
+    key.textContent = label;
+
+    const valueElement =
+      document.createElement('div');
+    valueElement.className =
+      'ocean-current-popup__value';
+    valueElement.textContent = value;
+
+    row.append(key, valueElement);
+    root.append(row);
+  }
+
+  const disclaimer =
+    document.createElement('div');
+
+  disclaimer.className =
+    'cams-air-popup__disclaimer';
+
+  disclaimer.textContent =
+    t(
+      currentLanguage,
+      'air.modelDisclaimer',
+    );
+
+  root.append(disclaimer);
+
+  return root;
+}
+
+
+function installCamsAirLayer() {
+  map.addSource(
+    CAMS_RUNTIME_CONFIG.sourceId,
+    {
+      type: 'geojson',
+      data: emptyFeatureCollection(),
+    },
+  );
+
+  const beforeId =
+    map.getLayer('monitor-events-glow')
+      ? 'monitor-events-glow'
+      : undefined;
+
+  map.addLayer(
+    {
+      id: CAMS_RUNTIME_CONFIG.layerId,
+      type: 'fill',
+      source: CAMS_RUNTIME_CONFIG.sourceId,
+      layout: {
+        visibility: 'none',
+      },
+      paint: {
+        'fill-color': '#3157d5',
+        'fill-opacity':
+          camsAirOpacityPercent / 100,
+        'fill-outline-color':
+          'rgba(255,255,255,0)',
+      },
+    },
+    beforeId,
+  );
+
+  map.on(
+    'mouseenter',
+    CAMS_RUNTIME_CONFIG.layerId,
+    () => {
+      map.getCanvas().style.cursor =
+        'pointer';
+    },
+  );
+
+  map.on(
+    'mouseleave',
+    CAMS_RUNTIME_CONFIG.layerId,
+    () => {
+      map.getCanvas().style.cursor = '';
+    },
+  );
+
+  map.on(
+    'click',
+    CAMS_RUNTIME_CONFIG.layerId,
+    (event) => {
+      if (
+        driftSelectionActive
+        || driftSelectionJustConsumed
+      ) return;
+
+      const feature =
+        event.features?.[0];
+
+      if (!feature) return;
+
+      if (camsAirPopup) {
+        camsAirPopup.remove();
+      }
+
+      camsAirPopup =
+        new maplibregl.Popup({
+          closeButton: true,
+          closeOnClick: true,
+          offset: 10,
+        })
+          .setLngLat(event.lngLat)
+          .setDOMContent(
+            makeCamsAirPopupContent(
+              feature.properties ?? {},
+            ),
+          )
+          .addTo(map);
+    },
+  );
+
+  applyCamsAirOpacity();
+}
+
+
+function setCamsAirVisibility(visible) {
+  if (map.getLayer(CAMS_RUNTIME_CONFIG.layerId)) {
+    map.setLayoutProperty(
+      CAMS_RUNTIME_CONFIG.layerId,
+      'visibility',
+      visible ? 'visible' : 'none',
+    );
+  }
+
+  if (!visible && camsAirPopup) {
+    camsAirPopup.remove();
+    camsAirPopup = null;
+  }
+
+  renderCamsAirOperational();
+}
+
+
+async function refreshCamsAir() {
+  if (
+    !camsAirLayerVisible()
+    || camsAirLoading
+  ) return;
+
+  camsAirLoading = true;
+  camsAirErrorMessage = '';
+  renderCamsAirStatus();
+
+  try {
+    const response =
+      await fetch(
+        `${CAMS_RUNTIME_CONFIG.endpoint}?pollutant=${camsAirPollutant}&stride=1`,
+      );
+
+    if (!response.ok) {
+      let detail = String(response.status);
+
+      try {
+        const errorPayload =
+          await response.json();
+
+        detail =
+          errorPayload.detail
+          || detail;
+      } catch {
+        // Keep status.
+      }
+
+      throw new Error(detail);
+    }
+
+    camsAirPayload =
+      await response.json();
+
+    const source =
+      map.getSource(
+        CAMS_RUNTIME_CONFIG.sourceId,
+      );
+
+    if (source && camsAirPayload?.grid) {
+      source.setData(
+        buildCamsAirCellGeoJSON(
+          camsAirPayload,
+        ),
+      );
+    }
+
+    if (map.getLayer(CAMS_RUNTIME_CONFIG.layerId)) {
+      map.setPaintProperty(
+        CAMS_RUNTIME_CONFIG.layerId,
+        'fill-color',
+        camsFillColorExpression(
+          camsAirPayload,
+        ),
+      );
+    }
+
+    setCamsAirVisibility(true);
+  } catch (error) {
+    console.error(
+      '[Black Sea Eco Monitor / CAMS]',
+      error,
+    );
+
+    camsAirErrorMessage =
+      error?.message || String(error);
+
+    setCamsAirVisibility(false);
+  } finally {
+    camsAirLoading = false;
+    renderCamsAirStatus();
+  }
+}
+
+
+function renderCamsAirStatus() {
+  if (!camsAirNote) return;
+
+  camsAirNote.classList.toggle(
+    'cams-air-note--loading',
+    camsAirLoading,
+  );
+
+  camsAirNote.classList.toggle(
+    'cams-air-note--error',
+    Boolean(camsAirErrorMessage),
+  );
+
+  if (!camsAirLayerVisible()) {
+    camsAirNote.textContent =
+      t(currentLanguage, 'air.off');
+  } else if (camsAirLoading) {
+    camsAirNote.textContent =
+      t(currentLanguage, 'air.loading');
+  } else if (camsAirErrorMessage) {
+    camsAirNote.textContent =
+      t(
+        currentLanguage,
+        'air.error',
+        {
+          message:
+            camsAirErrorMessage,
+        },
+      );
+  } else if (camsAirPayload) {
+    const view =
+      camsFieldViewModel(camsAirPayload);
+
+    camsAirNote.textContent =
+      t(
+        currentLanguage,
+        'air.readyDetailed',
+        {
+          pollutant:
+            view.pollutant,
+          time:
+            view.validTime
+              ? formatCurrentValidTime(
+                view.validTime,
+                localeForLanguage(currentLanguage),
+              )
+              : '—',
+        },
+      );
+  } else {
+    camsAirNote.textContent =
+      t(currentLanguage, 'air.off');
+  }
+
+  renderCamsAirOperational();
+}
+
+
 function windLayerVisible() {
   return Boolean(
     windToggle?.checked,
@@ -4884,6 +5403,47 @@ windArrowSizeSlider
 renderWindArrowSizeControl();
 
 
+camsAirOpacitySlider
+  ?.addEventListener(
+    'input',
+    () => {
+      camsAirOpacityPercent =
+        normalizeCamsOpacityPercent(
+          camsAirOpacitySlider.value,
+        );
+
+      window.localStorage.setItem(
+        CAMS_AIR_OPACITY_STORAGE_KEY,
+        String(camsAirOpacityPercent),
+      );
+
+      applyCamsAirOpacity();
+    },
+  );
+
+
+camsAirToggle?.addEventListener(
+  'change',
+  () => {
+    if (camsAirToggle.checked) {
+      void refreshCamsAir();
+    } else {
+      setCamsAirVisibility(false);
+      renderCamsAirStatus();
+    }
+  },
+);
+
+camsAirPollutantSelect?.addEventListener(
+  'change',
+  () => {
+    camsAirPollutant = camsAirPollutantSelect.value;
+    if (camsAirToggle?.checked) {
+      void refreshCamsAir();
+    }
+  },
+);
+
 windToggle?.addEventListener(
   'change',
   () => {
@@ -5411,6 +5971,7 @@ function applyLanguage(language) {
   renderCurrentsStatus();
   renderCurrentDisplayControls();
   renderWindStatus();
+  renderCamsAirStatus();
   renderLongTaskUX();
   renderDriftControls();
   renderSatelliteStatus();
@@ -5597,12 +6158,14 @@ map.on('load', () => {
   installEventLayer();
   installCurrentLayer();
   installWindLayer();
+   installCamsAirLayer();
   installDriftLayer();
   installImpactLayer();
   renderCurrentsStatus();
   renderCurrentDisplayControls();
   renderWindStatus();
   renderWindDisplayControls();
+  renderCamsAirStatus();
   renderDriftControls();
   renderSatelliteStatus();
 
