@@ -231,3 +231,8 @@ validation/
 
 # Runtime weather cache
 data/cache/weather/
+
+# AIR runtime cache
+data/cache/air/
+validation/air1_3a1_cams_netcdf_inspection.json
+air_field_response.json
