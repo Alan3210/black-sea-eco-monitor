@@ -1,3 +1,5 @@
+from backend.api.ground_stations import router as ground_stations_router
+
 from fastapi import FastAPI
 
 from backend.api.wind_field import router as wind_field_router
@@ -124,3 +126,5 @@ app.include_router(air_field_router)
 app.include_router(geos_cf_field_router)
 app.include_router(air_model_crosscheck_router)
 app.include_router(satellite_air_field_router)
+
+app.include_router(ground_stations_router)
