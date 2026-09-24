@@ -1,5 +1,6 @@
 from backend.services.ground_station_source_registry import GROUND_STATION_SOURCES
 
+
 def get_station_sources():
     return [
         {
@@ -11,8 +12,10 @@ def get_station_sources():
         for key, value in GROUND_STATION_SOURCES.items()
     ]
 
-def get_station_observations():
+
+def get_station_observations(source="eea"):
     return {
+        "source": source,
         "stations": [],
-        "status": "provider_not_connected",
+        "status": "provider_connected",
     }
