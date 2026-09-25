@@ -1,0 +1,11 @@
+Add to backend/main.py:
+
+from backend.api.evidence_crosscheck import (
+    router as evidence_crosscheck_router,
+)
+
+and:
+
+app.include_router(
+    evidence_crosscheck_router
+)

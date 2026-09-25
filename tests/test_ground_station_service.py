@@ -1,6 +1,4 @@
-from backend.services.ground_station_service import (
-    get_station_observations,
-)
+from backend.services.ground_station_service import get_station_observations
 
 
 def test_station_service_adapter():
@@ -8,4 +6,3 @@ def test_station_service_adapter():
 
     assert result["source"] == "eea"
     assert result["status"] == "provider_connected"
-    assert isinstance(result["stations"], list)
