@@ -25,7 +25,7 @@ export function renderEvidencePanelShell() {
   return `
     <aside id="evidence-panel" class="evidence-panel">
       <div class="evidence-panel__header">
-        <h2>Evidence Dashboard</h2>
+  
       </div>
       <div id="evidence-panel-content"></div>
     </aside>

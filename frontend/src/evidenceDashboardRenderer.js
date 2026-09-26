@@ -71,7 +71,7 @@ export function renderEvidenceDashboardHTML(
 ) {
   return `
     <div class="evidence-dashboard">
-      <h2>Evidence Dashboard</h2>
+
       ${renderDashboardComponents(model)}
     </div>
   `;

@@ -13,5 +13,19 @@ test("mounts evidence panel shell", () => {
   const result = mountEvidencePanel(container);
 
   assert.equal(result, true);
-  assert.match(container.innerHTML, /Evidence Dashboard/);
+
+  assert.match(
+    container.innerHTML,
+    /id="evidence-panel"/
+  );
+
+  assert.match(
+    container.innerHTML,
+    /id="evidence-panel-content"/
+  );
+
+  assert.match(
+    container.innerHTML,
+    /evidence-panel/
+  );
 });
