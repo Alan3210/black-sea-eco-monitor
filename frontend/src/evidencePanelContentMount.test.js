@@ -6,8 +6,20 @@ import {
 } from "./evidencePanelContentMount.js";
 
 test("mounts evidence panel content", () => {
+  const panel = {
+    style: {},
+  };
+
   const container = {
     innerHTML: "",
+
+    closest(selector) {
+      if (selector === "#evidence-panel") {
+        return panel;
+      }
+
+      return null;
+    },
   };
 
   const result = mountEvidencePanelContent(
@@ -18,8 +30,14 @@ test("mounts evidence panel content", () => {
   );
 
   assert.equal(result, true);
+
   assert.match(
     container.innerHTML,
     /Sources/,
+  );
+
+  assert.equal(
+    panel.style.display,
+    "",
   );
 });

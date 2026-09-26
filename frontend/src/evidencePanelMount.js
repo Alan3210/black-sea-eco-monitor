@@ -9,5 +9,11 @@ export function mountEvidencePanel(container) {
 
   container.innerHTML = renderEvidencePanelShell();
 
-  return true;
+const panel = container.querySelector("#evidence-panel");
+
+if (panel) {
+  panel.style.display = "none";
+}
+
+return true;
 }

@@ -6,8 +6,19 @@ import {
 } from "./evidencePanelMount.js";
 
 test("mounts evidence panel shell", () => {
+  const panel = {
+    style: {},
+  };
+
   const container = {
     innerHTML: "",
+    querySelector(selector) {
+      if (selector === "#evidence-panel") {
+        return panel;
+      }
+
+      return null;
+    },
   };
 
   const result = mountEvidencePanel(container);

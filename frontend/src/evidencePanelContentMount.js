@@ -12,5 +12,11 @@ export function mountEvidencePanelContent(
 
   container.innerHTML = renderEvidencePanel(payload);
 
+  const panel = container.closest("#evidence-panel");
+
+  if (panel) {
+    panel.style.display = "";
+  }
+
   return true;
 }

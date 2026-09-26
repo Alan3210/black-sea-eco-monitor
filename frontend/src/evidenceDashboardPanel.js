@@ -24,9 +24,6 @@ export function closeEvidencePanel(state) {
 export function renderEvidencePanelShell() {
   return `
     <aside id="evidence-panel" class="evidence-panel">
-      <div class="evidence-panel__header">
-  
-      </div>
       <div id="evidence-panel-content"></div>
     </aside>
   `;
