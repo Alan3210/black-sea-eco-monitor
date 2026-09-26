@@ -98,3 +98,11 @@ When investigating current behavior:
 1. Start with `/README.md`.
 2. Review current source code.
 3. Use milestone documents only as historical context.
+
+## Development history
+
+Historical milestone notes are archived in:
+
+`docs/archive/milestones/`
+
+The archive contains previous AIR, WEATHER, SATELLITE and SYSTEM implementation checkpoints.
