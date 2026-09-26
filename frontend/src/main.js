@@ -1962,16 +1962,27 @@ function renderEventPanel(event, originGroupId = null) {
     renderShareSummary(
       buildShareIncidentSummary({
         title: vm.location || event.title || "Incident",
-        location: vm.location || "Unknown",
+        location: null,
         evidence: vm.evidenceCount
           ? Array.from({ length: vm.evidenceCount })
           : [],
         timeline: [
           {
-            title: "Evidence Timeline",
+            title: "Satellite observation",
+          },
+          {
+            title: "CAMS forecast",
+          },
+          {
+            title: "Event detected",
+          },
+          {
+            title: "Evidence update",
           },
         ],
-        impact: impactPayload,
+        impact: impactPayload || {
+          status: "not_calculated",
+        },
       }),
     );
 
