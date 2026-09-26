@@ -1,0 +1,19 @@
+Replace temporary dashboard switch:
+
+REMOVE:
+throw new Error('Dashboard mode active');
+
+
+USE:
+
+if (isDashboardMode()) {
+  hideLegacyApplication();
+
+  const root = createDashboardRoot();
+
+  void mountEvidenceDashboard(root);
+
+  return;
+}
+
+This keeps normal map mode unchanged.

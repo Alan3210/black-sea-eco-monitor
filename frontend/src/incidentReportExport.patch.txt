@@ -1,0 +1,10 @@
+Apply this exact change in incidentReportExport.js:
+
+OLD:
+<h2>${report.title}</h2>
+
+NEW:
+<h2>Incident Report</h2>
+<h3>${report.title}</h3>
+
+This keeps the report type visible and preserves incident title.

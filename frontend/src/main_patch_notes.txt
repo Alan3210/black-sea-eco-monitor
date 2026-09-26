@@ -1,0 +1,7 @@
+Patch target:
+frontend/src/main.js
+
+Applied:
+1. Dashboard imports
+2. #dashboard mode switch
+3. Skip MapLibre startup in dashboard mode

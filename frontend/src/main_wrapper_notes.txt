@@ -1,0 +1,15 @@
+AIR-2.1D3E notes
+
+The patch converts:
+
+if dashboard { stop }
+
+into:
+
+if dashboard {
+  mount dashboard
+} else {
+  run map application
+}
+
+The existing map bootstrap must remain inside the else branch.

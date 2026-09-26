@@ -1,0 +1,22 @@
+AIR-2.2L3
+
+Replace renderVerticalTimeline return.
+
+REMOVE wrapper:
+<div class="evidence-vertical-timeline">
+...
+</div>
+
+RETURN ONLY:
+
+cards HTML
+
+The wrapper remains in main.js.
+
+Expected DOM:
+
+<div class="evidence-vertical-timeline">
+  <article class="timeline-card">
+  ...
+  </article>
+</div>

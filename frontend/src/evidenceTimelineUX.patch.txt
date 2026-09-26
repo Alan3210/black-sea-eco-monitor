@@ -1,0 +1,19 @@
+AIR-2.2L2 FIX
+
+Change renderVerticalTimeline().
+
+Remove outer wrapper:
+
+REMOVE:
+<div class="evidence-vertical-timeline">
+    cards
+</div>
+
+KEEP ONLY:
+cards HTML
+
+main.js already creates:
+<div class="evidence-vertical-timeline">
+
+Result:
+single timeline root.

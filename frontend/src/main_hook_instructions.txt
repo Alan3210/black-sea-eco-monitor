@@ -1,0 +1,16 @@
+AIR-2.1I-A main.js integration
+
+Add import:
+
+import {
+  mountFinalEvidencePanel,
+} from './finalMapEvidenceMount.js';
+
+
+Call after map application initialization:
+
+mountFinalEvidencePanel();
+
+Verify:
+
+document.getElementById('evidence-panel-root')

@@ -1,0 +1,30 @@
+AIR-2.2H main.js injection point found.
+
+Current event panel composition:
+
+header
+pills
+metrics
+locationQuality
+timeline
+contextSection
+workflowSection
+evidenceSection
+
+Add Timeline UX block near existing timeline section.
+
+Import:
+import { renderVerticalTimeline } from './evidenceTimelineUX.js';
+
+Before eventPanelContent.append(...):
+
+const evidenceTimeline = makeElement(
+  'div',
+  'evidence-timeline-container',
+);
+
+evidenceTimeline.innerHTML =
+  renderVerticalTimeline(event.timeline || []);
+
+Then append:
+evidenceTimeline

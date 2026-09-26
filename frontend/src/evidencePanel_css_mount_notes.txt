@@ -1,0 +1,6 @@
+AIR-2.1J
+
+Import evidencePanel.css into the application style pipeline.
+
+Expected result:
+right-side Evidence Dashboard overlay.

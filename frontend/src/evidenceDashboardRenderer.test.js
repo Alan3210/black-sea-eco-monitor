@@ -2,18 +2,22 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  renderEvidenceDashboardHTML,
+  renderDashboardComponents,
 } from "./evidenceDashboardRenderer.js";
 
-test("renders dashboard html", () => {
-  const html = renderEvidenceDashboardHTML({
-    title: "Evidence Dashboard",
+test("renders dashboard components", () => {
+  const html = renderDashboardComponents({
     summary: {
-      sources: {},
+      sources: {
+        station_measurements: true,
+      },
+    },
+    timeline: {
+      pollutant: "PM10",
     },
   });
 
-  assert.match(html, /Evidence Dashboard/);
   assert.match(html, /Sources Status/);
   assert.match(html, /Quality Overview/);
+  assert.match(html, /Evidence Timeline/);
 });

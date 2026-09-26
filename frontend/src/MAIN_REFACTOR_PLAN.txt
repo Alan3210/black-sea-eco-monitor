@@ -1,0 +1,12 @@
+Safe migration plan:
+
+1. Keep all current map code unchanged.
+2. Move existing MapLibre startup into:
+   startMapApplication()
+3. Replace top-level startup with:
+   bootstrapApplication({
+      startMapApplication,
+   });
+
+4. Dashboard mode will bypass MapLibre.
+5. Normal mode will start the existing map.

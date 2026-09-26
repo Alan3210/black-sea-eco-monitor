@@ -2,27 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  renderEvidenceTimelineHTML,
+  renderEvidenceTimeline,
 } from "./evidenceTimelineRenderer.js";
 
-test("renders timeline html", () => {
-  const html = renderEvidenceTimelineHTML({
-    title: "PM10 Timeline",
-    series: [
-      {
-        label: "EEA",
-        type: "station_measurement",
-        points: [
-          {
-            time: "10:00",
-            value: 20,
-          },
-        ],
-      },
-    ],
-  });
+test("renders visual evidence timeline", () => {
+  const html = renderEvidenceTimeline([
+    {
+      type: "observation",
+      title: "Satellite observation",
+      source: "Sentinel-5P",
+      time: "01:30",
+    },
+  ]);
 
-  assert.match(html, /PM10 Timeline/);
-  assert.match(html, /EEA/);
-  assert.match(html, /20/);
+  assert.match(html, /Satellite observation/);
+  assert.match(html, /🛰/);
 });

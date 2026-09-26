@@ -1,0 +1,13 @@
+AIR-2.1D3D
+
+Expected behavior:
+
+Normal:
+/
+-> existing map application
+
+Dashboard:
+#dashboard
+-> clean dashboard screen
+
+No MapLibre startup in dashboard mode.

@@ -1,6 +1,23 @@
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
+import "./evidencePanel.css";
+import {
+  isDashboardMode,
+  createDashboardRoot,
+} from './evidenceDashboardMode.js';
+
+import {
+  mountEvidenceDashboard,
+} from './evidenceDashboardEntry.js';
+
+import {
+  mountFinalEvidencePanel,
+} from './finalMapEvidenceMount.js';
+
+import {
+  renderVerticalTimeline,
+} from './evidenceTimelineUX.js';
 
 import {
   eventsToFeatureCollection,
@@ -124,6 +141,15 @@ import {
   fetchMonitorEventContext,
   monitorContextViewModel,
 } from './monitorContext.js';
+
+import {
+  renderSourceOverview,
+} from './sourceOverviewBlock.js';
+
+import {
+  buildShareIncidentSummary,
+  renderShareSummary,
+} from './shareIncidentSummary.js';
 
 import {
   DEFAULT_IMPACT_THRESHOLD_KM,
@@ -659,6 +685,16 @@ let driftParticles = normalizeDriftParticles(
 let selectedEventId = null;
 let selectedGroupId = null;
 let panelRenderToken = 0;
+
+
+if (isDashboardMode()) {
+  const root = createDashboardRoot();
+
+  void mountEvidenceDashboard(root);
+
+  // Dashboard mode skips MapLibre bootstrap.
+  throw new Error('Dashboard mode active');
+}
 
 const map = new maplibregl.Map({
   container: 'map',
@@ -1751,6 +1787,56 @@ function renderEventPanel(event, originGroupId = null) {
 
   timeline.append(timelineGrid);
 
+    const evidenceTimelineSection = makeElement(
+    'section',
+    'detail-section evidence-timeline-section',
+  );
+
+  evidenceTimelineSection.append(
+    makeElement(
+      'div',
+      'detail-section__title',
+      'Evidence Timeline',
+    ),
+  );
+
+  const evidenceTimelineContainer = makeElement(
+    'div',
+    'evidence-vertical-timeline',
+  );
+
+  evidenceTimelineContainer.innerHTML =
+    renderVerticalTimeline([
+      {
+        type: 'observation',
+        title: 'Satellite observation',
+        source: 'Sentinel-5P',
+        time: '13.09 01:30',
+      },
+      {
+        type: 'model',
+        title: 'CAMS forecast',
+        source: 'CAMS',
+        time: '13.09 02:00',
+      },
+      {
+        type: 'detection',
+        title: 'Event detected',
+        source: 'Monitor',
+        time: '13.09 08:00',
+      },
+      {
+        type: 'confirmation',
+        title: 'Evidence update',
+        source: 'Evidence System',
+        time: '13.09 10:54',
+      },
+    ]);
+
+  evidenceTimelineSection.append(
+    evidenceTimelineContainer,
+  );
+
   const evidenceSection = makeElement(
     'section',
     'detail-section',
@@ -1839,17 +1925,95 @@ function renderEventPanel(event, originGroupId = null) {
     workflowContent,
   );
 
+  const sourceOverviewSection = makeElement(
+    'section',
+    'detail-section source-overview-section',
+  );
+
+  sourceOverviewSection.innerHTML = `
+    <div class="detail-section__title">
+      Data Sources
+    </div>
+    ${renderSourceOverview([
+      {
+        name: 'Sentinel-5P',
+        type: 'Satellite',
+        purpose: 'Observation',
+      },
+      {
+        name: 'CAMS',
+        type: 'Model',
+        purpose: 'Forecast',
+      },
+      {
+        name: 'Drift Model',
+        type: 'Simulation',
+        purpose: 'Prediction',
+      },
+    ])}
+  `;
+
+  const shareSummarySection = makeElement(
+    'section',
+    'detail-section share-summary-section',
+  );
+
+  shareSummarySection.innerHTML =
+    renderShareSummary(
+      buildShareIncidentSummary({
+        title: event.title,
+        location: event.location || event.name || "Unknown",
+        evidence: evidenceList?.children
+          ? Array.from(evidenceList.children)
+          : [],
+        timeline: [],
+        impact: impactPayload,
+      }),
+    );
+
+  const impactForecastSection = makeElement(
+    'section',
+    'detail-section impact-summary-section',
+  );
+
+  const impactVm = impactPayload
+    ? impactSummaryViewModel(impactPayload)
+    : null;
+
+  impactForecastSection.innerHTML = `
+    <div class="detail-section__title">
+      Impact Forecast
+    </div>
+
+    <div class="detail-metrics">
+      <div class="detail-metric">
+        <div class="detail-metric__label">
+          Targets
+        </div>
+
+        <div class="detail-metric__value">
+          ${impactVm ? impactVm.targetCount : "—"}
+        </div>
+      </div>
+    </div>
+  `;
+
   eventPanelContent.append(
     header,
     pills,
     metrics,
     locationQuality,
     timeline,
+    evidenceTimelineSection,
+    impactForecastSection,
+    sourceOverviewSection,
+    evidenceSection,
+    shareSummarySection,
     contextSection,
     workflowSection,
-    evidenceSection,
   );
 
+ 
   eventPanel.classList.add(
     'event-panel--open',
   );
@@ -6165,6 +6329,7 @@ map.on('load', () => {
    installGeosCfAirLayer(map);
   installDriftLayer();
   installImpactLayer();
+  mountFinalEvidencePanel();
   renderCurrentsStatus();
   renderCurrentDisplayControls();
   renderWindStatus();

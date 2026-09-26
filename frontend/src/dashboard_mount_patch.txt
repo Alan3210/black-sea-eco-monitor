@@ -1,0 +1,16 @@
+Add import in main.js:
+
+import {
+  mountEvidenceDashboard,
+  shouldOpenDashboard,
+} from './evidenceDashboardEntry.js';
+
+
+Add after application initialization:
+
+if (shouldOpenDashboard()) {
+  const root = document.createElement('div');
+  root.id = 'evidence-dashboard-root';
+  document.body.appendChild(root);
+  mountEvidenceDashboard(root);
+}

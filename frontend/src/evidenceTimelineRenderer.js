@@ -1,29 +1,33 @@
-export function renderEvidenceTimelineHTML(
-  viewModel = {},
-) {
-  const seriesHTML = (viewModel.series || [])
-    .map((series) => {
-      const points = (series.points || [])
-        .map(
-          (point) =>
-            `<div class="timeline-point">${point.time || ""}: ${point.value ?? ""}</div>`,
-        )
-        .join("");
+import {
+  buildVisualTimeline,
+} from "./evidenceTimelineVisual.js";
 
-      return `
-        <section class="timeline-series">
-          <h4>${series.label}</h4>
-          <div class="timeline-type">${series.type}</div>
-          ${points}
-        </section>
-      `;
-    })
-    .join("");
+export function renderEvidenceTimeline(events = []) {
+  const timeline = buildVisualTimeline(events);
 
   return `
-    <div class="timeline-panel">
-      <h3>${viewModel.title || "Timeline"}</h3>
-      ${seriesHTML}
-    </div>
+    <section class="evidence-panel-card evidence-timeline-card">
+      <h3>Evidence Timeline</h3>
+
+      <div class="evidence-timeline">
+        ${timeline.map((event) => `
+          <div class="timeline-event ${event.className}">
+            <div class="timeline-icon">
+              ${event.icon}
+            </div>
+
+            <div class="timeline-content">
+              <strong>${event.title}</strong>
+              <span>${event.time || ""}</span>
+              ${
+                event.source
+                ? `<small>${event.source}</small>`
+                : ""
+              }
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    </section>
   `;
 }

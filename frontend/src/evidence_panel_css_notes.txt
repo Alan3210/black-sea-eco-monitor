@@ -1,0 +1,13 @@
+AIR-2.1E5B CSS integration notes
+
+Suggested container:
+
+.evidence-panel-root {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 360px;
+  z-index: 20;
+}
+
+Map remains primary layer.

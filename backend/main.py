@@ -8,6 +8,22 @@ from backend.api.geos_cf_field import router as geos_cf_field_router
 from backend.api.air_model_crosscheck import router as air_model_crosscheck_router
 from backend.api.satellite_air_field import router as satellite_air_field_router
 
+from backend.api.evidence_summary import (
+    router as evidence_summary_router,
+)
+
+from backend.api.evidence_timeline import (
+    router as evidence_timeline_router,
+)
+
+from backend.api.evidence_crosscheck import (
+    router as evidence_crosscheck_router,
+)
+
+from backend.api.dashboard import (
+    router as dashboard_router,
+)
+
 from backend.api.impact import router as impact_router
 from backend.api.impact_registry import router as impact_registry_router
 from backend.api.weather import router as weather_router
@@ -50,13 +66,16 @@ app.include_router(
     prefix="/events"
 )
 
+
 app.include_router(
     impact_registry_router
 )
 
+
 app.include_router(
     weather_router
 )
+
 
 app.include_router(
     evidence_router,
@@ -86,9 +105,6 @@ app.include_router(
 )
 
 
-
-
-
 app.include_router(
     impact_router
 )
@@ -99,7 +115,6 @@ app.include_router(
     prefix="/satellite/observations",
     tags=["satellite"],
 )
-
 
 
 app.include_router(
@@ -122,9 +137,29 @@ def root():
         "status": "running"
     }
 
+
 app.include_router(air_field_router)
 app.include_router(geos_cf_field_router)
 app.include_router(air_model_crosscheck_router)
 app.include_router(satellite_air_field_router)
 
 app.include_router(ground_stations_router)
+
+
+# AIR-2 Evidence Dashboard / Analytics Layer
+
+app.include_router(
+    evidence_summary_router
+)
+
+app.include_router(
+    evidence_timeline_router
+)
+
+app.include_router(
+    evidence_crosscheck_router
+)
+
+app.include_router(
+    dashboard_router
+)

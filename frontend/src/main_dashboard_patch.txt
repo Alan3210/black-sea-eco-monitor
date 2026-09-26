@@ -1,0 +1,20 @@
+AIR-2.1D3B main.js integration patch
+
+Add import:
+
+import {
+  isDashboardMode,
+  createDashboardRoot,
+} from './evidenceDashboardMode.js';
+
+
+Before map initialization:
+
+if (isDashboardMode()) {
+  const root = createDashboardRoot();
+
+  void mountEvidenceDashboard(root);
+
+  // Skip normal map bootstrap in dashboard mode.
+  return;
+}
