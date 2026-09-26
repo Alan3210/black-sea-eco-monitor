@@ -1810,28 +1810,32 @@ function renderEventPanel(event, originGroupId = null) {
       {
         type: 'observation',
         title: 'Satellite observation',
+        i18nKey: 'timeline.satelliteObservation',
         source: 'Sentinel-5P',
         time: '13.09 01:30',
       },
       {
         type: 'model',
         title: 'CAMS forecast',
+        i18nKey: 'timeline.camsForecast',
         source: 'CAMS',
         time: '13.09 02:00',
       },
       {
         type: 'detection',
         title: 'Event detected',
+        i18nKey: 'timeline.eventDetected',
         source: 'Monitor',
         time: '13.09 08:00',
       },
       {
         type: 'confirmation',
         title: 'Evidence update',
+        i18nKey: 'timeline.evidenceUpdate',
         source: 'Evidence System',
         time: '13.09 10:54',
       },
-    ]);
+    ], currentLanguage);
 
   evidenceTimelineSection.append(
     evidenceTimelineContainer,
@@ -1938,19 +1942,25 @@ function renderEventPanel(event, originGroupId = null) {
       {
         name: 'Sentinel-5P',
         type: 'Satellite',
+        typeKey: 'sources.satellite',
         purpose: 'Observation',
+        purposeKey: 'sources.observation',
       },
       {
         name: 'CAMS',
         type: 'Model',
+        typeKey: 'sources.model',
         purpose: 'Forecast',
+        purposeKey: 'sources.forecast',
       },
       {
         name: 'Drift Model',
         type: 'Simulation',
+        typeKey: 'sources.simulation',
         purpose: 'Prediction',
+        purposeKey: 'sources.prediction',
       },
-    ])}
+    ], currentLanguage)}
   `;
 
   const shareSummarySection = makeElement(
@@ -1969,6 +1979,7 @@ function renderEventPanel(event, originGroupId = null) {
         timeline: [
           {
             title: "Satellite observation",
+            i18nKey: "timeline.satelliteObservation",
           },
           {
             title: "CAMS forecast",
@@ -1984,6 +1995,7 @@ function renderEventPanel(event, originGroupId = null) {
           status: "not_calculated",
         },
       }),
+      currentLanguage,
     );
 
   const impactForecastSection = makeElement(

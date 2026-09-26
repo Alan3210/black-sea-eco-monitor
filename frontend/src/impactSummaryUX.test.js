@@ -15,7 +15,7 @@ test("renders impact summary UX", () => {
 
   assert.equal(state.affectedAreas, 3);
   assert.match(
-    renderImpactSummaryUX(state),
+    renderImpactSummaryUX(state, 'en'),
     /Impact Forecast/,
   );
 });

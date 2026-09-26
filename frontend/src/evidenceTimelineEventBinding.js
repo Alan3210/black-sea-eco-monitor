@@ -16,9 +16,11 @@ export function createTimelineFromEvent(
 
 export function renderEventTimelineForPanel(
   event = {},
+  currentLanguage = 'ru',
 ) {
   return renderEvidenceTimeline(
     event.timeline || [],
+    currentLanguage,
   );
 }
 

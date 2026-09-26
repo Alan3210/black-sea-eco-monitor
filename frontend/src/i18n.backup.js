@@ -337,44 +337,7 @@ const TRANSLATIONS = {
     'canonicalLocation.Black Sea': 'Чёрное море',
     'canonicalLocation.Krasnodar Krai': 'Краснодарский край',
     'canonicalLocation.Crimea': 'Крым',
-
-    'impact.title': 'Прогноз воздействия',
-    'impact.targets': 'Цели',
-
-    'impact.potential': 'Потенциальное воздействие',
-    'impact.affectedAreas': 'Затронутые области',
-    'impact.closestDistance': 'Ближайшее расстояние',
-    'impact.firstExposure': 'Первое воздействие',
-
-
-    'sources.title': 'Источники данных',
-    'sources.satellite': 'Спутник',
-    'sources.model': 'Модель',
-    'sources.simulation': 'Симуляция',
-    'sources.observation': 'Наблюдение',
-    'sources.forecast': 'Прогноз',
-    'sources.prediction': 'Прогнозирование',
-
-    'panel.evidenceDashboard': 'Панель доказательств',
-
-    'timeline.title': 'Хронология доказательств',
-    'timeline.satelliteObservation': 'Наблюдение спутника',
-    'timeline.camsForecast': 'Прогноз CAMS',
-    'timeline.eventDetected': 'Событие обнаружено',
-    'timeline.evidenceUpdate': 'Обновление доказательств',
-
-    'incidentSummary.title': 'Сводка инцидента',
-    'incidentSummary.evidence': 'Доказательства',
-    'incidentSummary.timeline': 'Хронология',
-    'incidentSummary.impact': 'Воздействие',
-    'incidentSummary.notCalculated': 'Не рассчитано',
-    'incidentSummary.available': 'Доступно',
-    'incidentSummary.copy': 'Копировать сводку',
-
   },
-
-
-
 
 
   en: {
@@ -710,21 +673,6 @@ const TRANSLATIONS = {
 
     'impact.title': 'Impact Forecast',
     'impact.targets': 'Targets',
-
-    'incidentSummary.title': 'Incident Summary',
-    'incidentSummary.evidence': 'Evidence',
-    'incidentSummary.timeline': 'Timeline',
-    'incidentSummary.impact': 'Impact',
-    'incidentSummary.notCalculated': 'Not calculated',
-    'incidentSummary.available': 'Available',
-    'incidentSummary.copy': 'Copy Summary',
-
-
-    'impact.potential': 'Potential impact',
-    'impact.affectedAreas': 'Affected areas',
-    'impact.closestDistance': 'Closest distance',
-    'impact.firstExposure': 'First exposure',
-
     'sources.title': 'Data Sources',
     'sources.satellite': 'Satellite',
     'sources.model': 'Model',

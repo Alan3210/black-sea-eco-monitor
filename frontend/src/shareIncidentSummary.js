@@ -11,6 +11,8 @@ export function buildShareIncidentSummary(report = {}) {
 }
 
 export function renderShareSummary(summary = {}, currentLanguage = null) {
+
+
   const label = (key, fallback) =>
     currentLanguage
       ? t(currentLanguage, key)
@@ -42,12 +44,16 @@ export function renderShareSummary(summary = {}, currentLanguage = null) {
         ${
           summary.impact?.status === "not_calculated"
             ? label('incidentSummary.notCalculated', 'Not calculated')
-            : (summary.impact ? "Available" : "—")
+            : (
+              summary.impact
+                ? label('incidentSummary.available', 'Available')
+                : "—"
+            )
         }
       </div>
 
       <button>
-        Copy Summary
+        ${label('incidentSummary.copy', 'Copy Summary')}
       </button>
     </section>
   `;

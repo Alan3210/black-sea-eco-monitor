@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 export const TIMELINE_VISUAL_STATES = {
   observation: {
     icon: "🛰",
@@ -36,7 +38,10 @@ export function buildVerticalTimeline(events = []) {
   return events.map(buildTimelineCard);
 }
 
-export function renderVerticalTimeline(events = []) {
+export function renderVerticalTimeline(
+  events = [],
+  currentLanguage = 'ru'
+) {
   const cards = buildVerticalTimeline(events);
 
 return `
@@ -47,7 +52,11 @@ return `
       </div>
 
       <div class="timeline-card__body">
-        <strong>${event.title || "Evidence event"}</strong>
+        <strong>${
+          event.i18nKey
+            ? t(currentLanguage, event.i18nKey)
+            : event.title || "Evidence event"
+        }</strong>
         <span>${event.time || ""}</span>
         ${
           event.source

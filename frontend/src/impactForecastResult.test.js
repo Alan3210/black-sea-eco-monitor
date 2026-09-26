@@ -13,5 +13,5 @@ test("builds impact forecast view model", () => {
   });
 
   assert.equal(vm.affectedAreas, 3);
-  assert.match(renderImpactForecastSummary(vm), /Impact Forecast/);
+  assert.match(renderImpactForecastSummary(vm, 'en'), /Impact Forecast/);
 });
