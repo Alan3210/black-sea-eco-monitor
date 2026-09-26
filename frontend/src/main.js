@@ -1961,12 +1961,16 @@ function renderEventPanel(event, originGroupId = null) {
   shareSummarySection.innerHTML =
     renderShareSummary(
       buildShareIncidentSummary({
-        title: event.title,
-        location: event.location || event.name || "Unknown",
-        evidence: evidenceList?.children
-          ? Array.from(evidenceList.children)
+        title: vm.location || event.title || "Incident",
+        location: vm.location || "Unknown",
+        evidence: vm.evidenceCount
+          ? Array.from({ length: vm.evidenceCount })
           : [],
-        timeline: [],
+        timeline: [
+          {
+            title: "Evidence Timeline",
+          },
+        ],
         impact: impactPayload,
       }),
     );
