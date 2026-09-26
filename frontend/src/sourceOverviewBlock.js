@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 export function buildSourceOverview(sources = []) {
   return sources.map((source) => ({
     name: source.name || "Unknown source",
@@ -23,17 +25,17 @@ export function groupSourceOverview(sources = []) {
   );
 }
 
-export function renderSourceOverview(sources = []) {
+export function renderSourceOverview(sources = [], currentLanguage = 'ru') {
   const groups = groupSourceOverview(sources);
 
   return Object.entries(groups)
     .map(([type, items]) => `
       <section class="source-group">
-        <h3>${type}</h3>
+        <h3>${t(currentLanguage, `sources.${type.toLowerCase()}`) || type}</h3>
         ${items.map((item) => `
           <div class="source-card">
             <strong>${item.name}</strong>
-            <span>${item.purpose}</span>
+            <span>${t(currentLanguage, `sources.${item.purpose.toLowerCase()}`) || item.purpose}</span>
           </div>
         `).join("")}
       </section>

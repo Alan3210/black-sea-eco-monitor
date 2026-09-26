@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 export function buildImpactForecastViewModel(payload = {}) {
   return {
     horizon: payload.horizon || [],
@@ -8,17 +10,17 @@ export function buildImpactForecastViewModel(payload = {}) {
   };
 }
 
-export function renderImpactForecastSummary(vm = {}) {
+export function renderImpactForecastSummary(vm = {}, currentLanguage = 'ru') {
   return `
     <section class="detail-section impact-forecast-summary">
       <div class="detail-section__title">
-        Impact Forecast
+        ${t(currentLanguage, 'impact.title')}
       </div>
 
       <div class="detail-metrics">
         <div class="detail-metric">
           <div class="detail-metric__label">
-            Affected areas
+            ${t(currentLanguage, 'impact.affectedAreas')}
           </div>
           <div class="detail-metric__value">
             ${vm.affectedAreas}
@@ -27,7 +29,7 @@ export function renderImpactForecastSummary(vm = {}) {
 
         <div class="detail-metric">
           <div class="detail-metric__label">
-            Closest distance
+            ${t(currentLanguage, 'impact.closestDistance')}
           </div>
           <div class="detail-metric__value">
             ${vm.closestDistanceKm ?? "—"} km

@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 export function buildImpactSummaryState(payload = {}) {
   return {
     status: payload.status || "ready",
@@ -8,17 +10,17 @@ export function buildImpactSummaryState(payload = {}) {
   };
 }
 
-export function renderImpactSummaryUX(state = {}) {
+export function renderImpactSummaryUX(state = {}, currentLanguage = 'ru') {
   return `
     <section class="detail-section impact-summary-section">
       <div class="detail-section__title">
-        Impact Forecast
+        ${t(currentLanguage, 'impact.title')}
       </div>
 
       <div class="detail-metrics">
         <div class="detail-metric">
           <div class="detail-metric__label">
-            Potential impact
+            ${t(currentLanguage, 'impact.potential')}
           </div>
           <div class="detail-metric__value">
             ${state.affectedAreas} areas
@@ -27,7 +29,7 @@ export function renderImpactSummaryUX(state = {}) {
 
         <div class="detail-metric">
           <div class="detail-metric__label">
-            Closest distance
+            ${t(currentLanguage, 'impact.closestDistance')}
           </div>
           <div class="detail-metric__value">
             ${state.closestDistanceKm ?? "—"} km
@@ -36,7 +38,7 @@ export function renderImpactSummaryUX(state = {}) {
 
         <div class="detail-metric">
           <div class="detail-metric__label">
-            First exposure
+            ${t(currentLanguage, 'impact.firstExposure')}
           </div>
           <div class="detail-metric__value">
             ${state.firstExposureHours ?? "—"} h

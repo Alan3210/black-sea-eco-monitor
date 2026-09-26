@@ -339,6 +339,14 @@ const TRANSLATIONS = {
     'canonicalLocation.Crimea': 'Крым',
   },
 
+
+    'impact.title': 'Прогноз воздействия',
+    'impact.targets': 'Цели',
+    'sources.title': 'Источники данных',
+    'sources.satellite': 'Спутник',
+    'sources.model': 'Модель',
+    'sources.simulation': 'Симуляция',
+
   en: {
     'site.title': 'ECOMONITOR',
     'site.eyebrow': 'ENVIRONMENTAL INTELLIGENCE',
@@ -669,6 +677,14 @@ const TRANSLATIONS = {
     'canonicalLocation.Black Sea': 'Black Sea',
     'canonicalLocation.Krasnodar Krai': 'Krasnodar Krai',
     'canonicalLocation.Crimea': 'Crimea',
+
+    'impact.title': 'Impact Forecast',
+    'impact.targets': 'Targets',
+    'sources.title': 'Data Sources',
+    'sources.satellite': 'Satellite',
+    'sources.model': 'Model',
+    'sources.simulation': 'Simulation',
+
   },
 };
 

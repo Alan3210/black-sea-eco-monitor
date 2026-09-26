@@ -1932,7 +1932,7 @@ function renderEventPanel(event, originGroupId = null) {
 
   sourceOverviewSection.innerHTML = `
     <div class="detail-section__title">
-      Data Sources
+      ${t(currentLanguage, 'sources.title')}
     </div>
     ${renderSourceOverview([
       {
@@ -1996,14 +1996,20 @@ function renderEventPanel(event, originGroupId = null) {
     : null;
 
   impactForecastSection.innerHTML = `
-    <div class="detail-section__title">
-      Impact Forecast
+    <div
+      class="detail-section__title"
+      data-i18n="impact.title"
+    >
+      ${t(currentLanguage, 'impact.title')}
     </div>
 
     <div class="detail-metrics">
       <div class="detail-metric">
-        <div class="detail-metric__label">
-          Targets
+        <div
+          class="detail-metric__label"
+          data-i18n="impact.targets"
+        >
+          ${t(currentLanguage, 'impact.targets')}
         </div>
 
         <div class="detail-metric__value">

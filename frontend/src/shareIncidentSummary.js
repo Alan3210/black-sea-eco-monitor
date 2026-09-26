@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 export function buildShareIncidentSummary(report = {}) {
   return {
     title: report.title || "Incident",
@@ -8,10 +10,15 @@ export function buildShareIncidentSummary(report = {}) {
   };
 }
 
-export function renderShareSummary(summary = {}) {
+export function renderShareSummary(summary = {}, currentLanguage = null) {
+  const label = (key, fallback) =>
+    currentLanguage
+      ? t(currentLanguage, key)
+      : fallback;
+
   return `
     <section class="share-summary">
-      <h2>Incident Summary</h2>
+      <h2>${label('incidentSummary.title', 'Incident Summary')}</h2>
       <h3>${summary.title}</h3>
 
       ${
@@ -21,20 +28,20 @@ export function renderShareSummary(summary = {}) {
       }
 
       <div>
-        Evidence:
+        ${label('incidentSummary.evidence', 'Evidence')}:
         ${summary.evidenceCount} sources
       </div>
 
       <div>
-        Timeline:
+        ${label('incidentSummary.timeline', 'Timeline')}:
         ${summary.timelineCount} events
       </div>
 
       <div>
-        Impact:
+        ${label('incidentSummary.impact', 'Impact')}:
         ${
           summary.impact?.status === "not_calculated"
-            ? "Not calculated"
+            ? label('incidentSummary.notCalculated', 'Not calculated')
             : (summary.impact ? "Available" : "—")
         }
       </div>
