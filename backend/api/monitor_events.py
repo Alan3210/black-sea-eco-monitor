@@ -13,6 +13,10 @@ from backend.services.monitor_context import (
     build_monitor_event_context,
 )
 
+from backend.services.evidence_fusion import (
+    build_event_investigation_evidence,
+)
+
 router = APIRouter()
 
 
@@ -112,3 +116,23 @@ def get_monitor_event_evidence(
     return store.get_event_evidence_records(
         event_id
     )
+
+@router.get("/{event_id}/investigation")
+def get_monitor_event_investigation(
+    event_id: str,
+    store: EventStore = Depends(
+        get_monitor_event_store
+    ),
+):
+    investigation = build_event_investigation_evidence(
+        store,
+        event_id,
+    )
+
+    if investigation is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Event not found",
+        )
+
+    return investigation
