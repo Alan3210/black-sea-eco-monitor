@@ -18,9 +18,22 @@ export async function fetchMonitorEventContext(
   return response.json();
 }
 
+
 export function monitorContextViewModel(context) {
-  const capabilities = context?.capabilities ?? {};
-  const readiness = context?.readiness ?? {};
+  const capabilities =
+    context?.capabilities ?? {};
+
+  const readiness =
+    context?.readiness ?? {};
+
+  const links =
+    context?.links ?? {};
+
+  const investigationHref =
+    typeof links.investigation === 'string'
+    && links.investigation.trim()
+      ? links.investigation
+      : null;
 
   return {
     satelliteCount: Number.isFinite(
@@ -28,17 +41,23 @@ export function monitorContextViewModel(context) {
     )
       ? Number(context.satellite.count)
       : 0,
+
     hasCoordinates: Boolean(
       readiness.event_has_coordinates,
     ),
+
     driftReady: Boolean(
       capabilities.ocean_drift?.available,
     ),
+
     impactReady: Boolean(
       capabilities.impact_screening?.available,
     ),
+
     arReady: Boolean(
       capabilities.ar_scene?.available,
     ),
+
+    investigationHref,
   };
 }
