@@ -20,6 +20,14 @@ import {
 } from './evidenceTimelineUX.js';
 
 import {
+  loadInvestigationViewModel,
+} from './investigationPipeline.js';
+
+import {
+  renderInvestigationBlock,
+} from './investigationRenderer.js';
+
+import {
   eventsToFeatureCollection,
   fetchEventEvidence,
   fetchMonitorEvents,
@@ -480,6 +488,8 @@ const evidenceRequests = new Map();
 const contextCache = new Map();
 const contextRequests = new Map();
 
+const investigationCache = new Map();
+const investigationRequests = new Map();
 
 let allEvents = [];
 let visibleEvents = [];
@@ -1255,7 +1265,6 @@ function loadContext(eventId) {
       contextCache.get(eventId),
     );
   }
-
   if (contextRequests.has(eventId)) {
     return contextRequests.get(eventId);
   }
@@ -1270,6 +1279,45 @@ function loadContext(eventId) {
     });
 
   contextRequests.set(eventId, request);
+  return request;
+}
+
+function loadInvestigation(href) {
+  if (!href) {
+    return loadInvestigationViewModel(null);
+  }
+
+  if (investigationCache.has(href)) {
+    return Promise.resolve(
+      investigationCache.get(href),
+    );
+  }
+
+  if (investigationRequests.has(href)) {
+    return investigationRequests.get(href);
+  }
+
+  const request =
+    loadInvestigationViewModel(href)
+      .then((viewModel) => {
+        investigationCache.set(
+          href,
+          viewModel,
+        );
+
+        return viewModel;
+      })
+      .finally(() => {
+        investigationRequests.delete(
+          href,
+        );
+      });
+
+  investigationRequests.set(
+    href,
+    request,
+  );
+
   return request;
 }
 
@@ -1841,6 +1889,42 @@ function renderEventPanel(event, originGroupId = null) {
     evidenceTimelineContainer,
   );
 
+    const investigationSection = makeElement(
+    'section',
+    'detail-section investigation-section',
+  );
+
+  investigationSection.append(
+    makeElement(
+      'div',
+      'detail-section__title',
+      t(
+        currentLanguage,
+        'investigation.title',
+      ),
+    ),
+  );
+
+  const investigationContent = makeElement(
+    'div',
+    'investigation-content',
+  );
+
+  investigationContent.append(
+    makeElement(
+      'div',
+      'investigation-loading',
+      t(
+        currentLanguage,
+        'investigation.loading',
+      ),
+    ),
+  );
+
+  investigationSection.append(
+    investigationContent,
+  );
+
   const evidenceSection = makeElement(
     'section',
     'detail-section',
@@ -2040,6 +2124,7 @@ function renderEventPanel(event, originGroupId = null) {
     evidenceTimelineSection,
     impactForecastSection,
     sourceOverviewSection,
+    investigationSection,
     evidenceSection,
     shareSummarySection,
     contextSection,
@@ -2069,6 +2154,53 @@ function renderEventPanel(event, originGroupId = null) {
         contextGrid,
         context,
       );
+
+            const contextVm =
+        monitorContextViewModel(
+          context,
+        );
+
+      loadInvestigation(
+        contextVm.investigationHref,
+      )
+        .then((investigationVm) => {
+          if (
+            token !== panelRenderToken
+            || selectedEventId !== event.id
+          ) {
+            return;
+          }
+
+          investigationContent.innerHTML =
+            renderInvestigationBlock(
+              investigationVm,
+              currentLanguage,
+            );
+        })
+        .catch((error) => {
+          if (
+            token !== panelRenderToken
+            || selectedEventId !== event.id
+          ) {
+            return;
+          }
+
+          investigationContent.replaceChildren(
+            makeElement(
+              'div',
+              'investigation-error',
+              t(
+                currentLanguage,
+                'investigation.unavailable',
+                {
+                  message:
+                    error.message,
+                },
+              ),
+            ),
+          );
+        });
+
     })
     .catch((error) => {
       if (
@@ -2077,6 +2209,21 @@ function renderEventPanel(event, originGroupId = null) {
       ) {
         return;
       }
+
+            investigationContent.replaceChildren(
+        makeElement(
+          'div',
+          'investigation-error',
+          t(
+            currentLanguage,
+            'investigation.unavailable',
+            {
+              message:
+                error.message,
+            },
+          ),
+        ),
+      );
 
       contextGrid.replaceChildren(
         makeElement(
