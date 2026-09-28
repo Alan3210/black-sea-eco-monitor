@@ -207,6 +207,9 @@ def test_service_exposes_canonical_links(
         "evidence": (
             f"/monitor/events/{event_id}/evidence"
         ),
+        "investigation": (
+            f"/monitor/events/{event_id}/investigation"
+        ),
         "satellite_observations": (
             f"/monitor/events/{event_id}/"
             "satellite-observations"
@@ -238,6 +241,9 @@ def test_api_returns_200_and_context(
     assert payload[
         "capabilities"
     ]["ocean_drift"]["available"] is True
+    assert payload["links"]["investigation"] == (
+        f"/monitor/events/{event_id}/investigation"
+    )
 
 
 def test_api_missing_event_returns_404(

@@ -98,6 +98,9 @@ def build_monitor_event_context(
             "evidence": (
                 f"/monitor/events/{event_id}/evidence"
             ),
+            "investigation": (
+                f"/monitor/events/{event_id}/investigation"
+            ),
             "satellite_observations": (
                 f"/monitor/events/{event_id}/"
                 "satellite-observations"
